@@ -11,15 +11,17 @@ Usage:
 
 from __future__ import annotations
 
+# === IMPORTS ===
+# stdlib
 import argparse
 from pathlib import Path
 
-# === IMPORTS ===
+# third-party
 import numpy as np
 import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt  # noqa: E402  (matplotlib.use must precede pyplot)
 import seaborn as sns
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.linear_model import Lasso
@@ -49,16 +51,124 @@ LASSO_KWARGS = dict(alpha=0.01)
 
 # === DATA LOADING (Task 2) ===
 
-def load_horizon(horizon: str) -> tuple[pd.DataFrame, pd.Series]:
-    """Stub — implemented in Task 2."""
-    raise NotImplementedError("Task 2")
+def load_horizon(horizon: str) -> tuple[pd.DataFrame, pd.Series, list[str]]:
+    """Load one horizon's CSV and return (X, y, feature_names).
+
+    Mirrors Kevin's preprocessing pipeline:
+      - drop name / app_id
+      - keep only numeric columns
+      - mean-impute missing
+      - log1p any column whose name contains "review" or "player"
+      - log1p the target
+
+    NOTE: pd.get_dummies on genre/categories is omitted because the columns
+    arrive already pre-flattened in the CSV (verified during audit).
+    """
+    rel_path, target_col = HORIZONS[horizon]
+    df = pd.read_csv(DATA_DIR / rel_path)
+    df.columns = df.columns.str.strip().str.replace("﻿", "")
+    df = df.dropna(subset=[target_col])
+
+    drop_cols = [c for c in df.columns if "name" in c.lower() or "app_id" in c.lower()]
+    feature_df = df.drop(columns=drop_cols + [target_col], errors="ignore")
+    feature_df = feature_df.select_dtypes(include=[np.number])
+
+    imputer = SimpleImputer(strategy="mean")
+    X = pd.DataFrame(
+        imputer.fit_transform(feature_df),
+        columns=feature_df.columns,
+    )
+    for col in X.columns:
+        if "review" in col.lower() or "player" in col.lower():
+            X[col] = np.log1p(X[col])
+    y = np.log1p(df[target_col].values)
+
+    return X, pd.Series(y, name=target_col), list(X.columns)
 
 
 # === MODEL TRAINING + METRICS (Task 2) ===
 
-def train_and_score(*args, **kwargs):
-    """Stub — implemented in Task 2."""
-    raise NotImplementedError("Task 2")
+def train_and_score(
+    X: pd.DataFrame,
+    y: pd.Series,
+    model_name: str,
+) -> dict:
+    """Train one model on a random 85/15 split (seed 42) and return metrics + predictions.
+
+    Returns a dict with keys: model_name, r2, mae, mape, y_test, y_pred, model.
+    """
+    X_tr, X_te, y_tr, y_te = train_test_split(
+        X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE
+    )
+
+    if model_name == "GBR":
+        model = GradientBoostingRegressor(**GBR_KWARGS)
+    elif model_name == "RF":
+        model = RandomForestRegressor(**RF_KWARGS)
+    elif model_name == "LR":
+        scaler = StandardScaler()
+        X_tr_s = scaler.fit_transform(X_tr)
+        X_te_s = scaler.transform(X_te)
+        model = Lasso(**LASSO_KWARGS)
+        model.fit(X_tr_s, y_tr)
+        y_pred = model.predict(X_te_s)
+        return _scoring_dict(model_name, y_te, y_pred, model, X.columns)
+    else:
+        raise ValueError(f"Unknown model {model_name!r}")
+
+    model.fit(X_tr, y_tr)
+    y_pred = model.predict(X_te)
+    return _scoring_dict(model_name, y_te, y_pred, model, X.columns)
+
+
+def _scoring_dict(name, y_te, y_pred, model, feature_names) -> dict:
+    """Compute R² and MAE on log-CCU plus MAPE on raw CCU."""
+    y_te_arr = np.asarray(y_te)
+    y_te_raw = np.expm1(y_te_arr)
+    y_pred_raw = np.expm1(y_pred)
+    nonzero = y_te_raw > 0
+    if nonzero.sum() > 0:
+        mape = float(np.mean(np.abs((y_te_raw[nonzero] - y_pred_raw[nonzero]) / y_te_raw[nonzero])) * 100)
+    else:
+        mape = float("nan")
+    return {
+        "model_name": name,
+        "r2": float(r2_score(y_te, y_pred)),
+        "mae": float(mean_absolute_error(y_te, y_pred)),
+        "mape": mape,
+        "y_test": y_te_arr,
+        "y_pred": np.asarray(y_pred),
+        "model": model,
+        "feature_names": list(feature_names),
+    }
+
+
+def build_results() -> dict:
+    """Run all (horizon × feature_state × model_name) combinations.
+
+    Returns: dict[(horizon, has_feature, model_name)] -> scoring_dict
+    """
+    out = {}
+    for horizon in HORIZONS:
+        X_full, y, feat_names = load_horizon(horizon)
+        for has_feat in (True, False):
+            X = X_full.copy() if has_feat else X_full.drop(columns=[WEEK1_COL], errors="ignore")
+            for model_name in ("LR", "RF", "GBR"):
+                key = (horizon, has_feat, model_name)
+                print(f"  training {model_name:<3} | horizon={horizon} | with_week1={has_feat}")
+                out[key] = train_and_score(X, y, model_name)
+    return out
+
+
+# Cache results across figure calls (avoids retraining 18 models per --fig invocation)
+_RESULTS_CACHE: dict | None = None
+
+
+def get_results() -> dict:
+    global _RESULTS_CACHE
+    if _RESULTS_CACHE is None:
+        _RESULTS_CACHE = build_results()
+    return _RESULTS_CACHE
 
 
 # === FIGURE 1: Feature Importance (Task 3) ===
