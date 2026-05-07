@@ -193,8 +193,40 @@ def figure_1_feature_importance() -> None:
 
 # === FIGURE 2: Model Comparison (Task 4) ===
 
-def figure_2_model_comparison(*args, **kwargs):
-    raise NotImplementedError("Task 4")
+def figure_2_model_comparison() -> None:
+    """2×2 grid. Rows = no/with players_7days. Cols = R² / MAE.
+    Bars = LR / RF / GBR, grouped by horizon (3m / 6m / 12m).
+    """
+    results = get_results()
+    horizons = ["3m", "6m", "12m"]
+    models = ["LR", "RF", "GBR"]
+    feature_states = [False, True]
+    metrics = [("r2", "R$^2$"), ("mae", "MAE (log-CCU)")]
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+    width = 0.25
+    x = np.arange(len(horizons))
+
+    for row, has_feat in enumerate(feature_states):
+        for col, (metric_key, metric_label) in enumerate(metrics):
+            ax = axes[row, col]
+            for i, model_name in enumerate(models):
+                vals = [results[(h, has_feat, model_name)][metric_key] for h in horizons]
+                ax.bar(x + i * width - width, vals, width, label=model_name)
+            ax.set_xticks(x)
+            ax.set_xticklabels(horizons)
+            feature_label = "with players_7days" if has_feat else "without players_7days"
+            ax.set_title(f"{feature_label} — {metric_label}")
+            ax.set_xlabel("Horizon")
+            ax.set_ylabel(metric_label)
+            ax.legend(fontsize=8)
+            ax.grid(axis="y", alpha=0.3)
+
+    plt.tight_layout()
+    out = FIGURES_DIR / "02_model_comparison.png"
+    fig.savefig(out, dpi=200)
+    plt.close(fig)
+    print(f"  → {out}")
 
 
 # === FIGURE 3: Predicted vs Actual (Task 5) ===
