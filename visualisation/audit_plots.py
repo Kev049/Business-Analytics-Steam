@@ -374,11 +374,20 @@ def figure_6_exploration() -> None:
     # filter sentinel metacritic_score == 0 (76% of rows per audit) for honest correlation
     corr_df = corr_df[corr_df["metacritic_score"] > 0]
     corr = corr_df.corr()
+    short_labels = {
+        "players_7days_after_release": "week-1 players",
+        "early_reviews_total": "early reviews",
+        "early_positive_ratio": "positive ratio",
+        "metacritic_score": "metacritic",
+        "price_final_usd_cents": "price (¢)",
+        "players_month_3_after_release": "3-mo players",
+    }
+    labels = [short_labels.get(c, c) for c in corr.columns]
     sns.heatmap(
         corr, annot=True, fmt=".2f", cmap="RdBu_r", center=0, vmin=-1, vmax=1,
         cbar_kws={"label": "Pearson r"}, ax=axes[1],
-        xticklabels=[c[:24] for c in corr.columns],
-        yticklabels=[c[:24] for c in corr.columns],
+        xticklabels=labels,
+        yticklabels=labels,
     )
     axes[1].set_title("Feature correlation heatmap (3-month)")
 
