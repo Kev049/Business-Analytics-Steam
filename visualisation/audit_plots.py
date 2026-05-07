@@ -231,8 +231,37 @@ def figure_2_model_comparison() -> None:
 
 # === FIGURE 3: Predicted vs Actual (Task 5) ===
 
-def figure_3_pred_vs_actual(*args, **kwargs):
-    raise NotImplementedError("Task 5")
+def figure_3_pred_vs_actual() -> None:
+    """1×3 grid: predicted vs actual CCU per horizon, log-log scale, GBR with feature."""
+    results = get_results()
+    horizons = ["3m", "6m", "12m"]
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    for ax, h in zip(axes, horizons):
+        res = results[(h, True, "GBR")]
+        # back-transform from log-CCU to raw CCU for interpretability
+        y_true_raw = np.expm1(res["y_test"])
+        y_pred_raw = np.expm1(res["y_pred"])
+        # filter for log scale (need > 0)
+        mask = (y_true_raw > 0) & (y_pred_raw > 0)
+        ax.scatter(y_true_raw[mask], y_pred_raw[mask], alpha=0.4, s=10, color="steelblue")
+        if mask.sum() > 0:
+            lo = max(min(y_true_raw[mask].min(), y_pred_raw[mask].min()), 1e-2)
+            hi = max(y_true_raw[mask].max(), y_pred_raw[mask].max())
+            ax.plot([lo, hi], [lo, hi], "r--", linewidth=1, label="y = x")
+            ax.set_xscale("log")
+            ax.set_yscale("log")
+        ax.set_xlabel("Actual CCU")
+        ax.set_ylabel("Predicted CCU")
+        ax.set_title(f"{h} horizon (R² = {res['r2']:.3f})")
+        ax.legend(fontsize=9)
+        ax.grid(True, which="both", alpha=0.3)
+
+    plt.tight_layout()
+    out = FIGURES_DIR / "03_pred_vs_actual.png"
+    fig.savefig(out, dpi=200)
+    plt.close(fig)
+    print(f"  → {out}")
 
 
 # === FIGURE 4: Residuals (Task 6) ===
