@@ -339,8 +339,54 @@ def figure_5_week1_vs_target() -> None:
 
 # === FIGURE 6: Exploration combo (Task 8) ===
 
-def figure_6_exploration(*args, **kwargs):
-    raise NotImplementedError("Task 8")
+def figure_6_exploration() -> None:
+    """Two-panel combo. Left: early_positive_ratio vs 3-month CCU scatter.
+    Right: 6×6 correlation heatmap.
+    """
+    rel_path, target_col = HORIZONS["3m"]
+    df = pd.read_csv(DATA_DIR / rel_path)
+    df.columns = df.columns.str.strip().str.replace("﻿", "")
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+
+    # --- Left panel: early_positive_ratio scatter ---
+    sub = df.dropna(subset=["early_positive_ratio", target_col])
+    sub = sub[(sub["early_positive_ratio"] >= 0) & (sub["early_positive_ratio"] <= 1)]
+    sub = sub[sub[target_col] > 0]
+    ax = axes[0]
+    ax.scatter(sub["early_positive_ratio"], sub[target_col], alpha=0.3, s=8, color="steelblue")
+    ax.set_yscale("log")
+    ax.set_xlabel("early_positive_ratio")
+    ax.set_ylabel(f"{target_col} (log scale)")
+    ax.set_title("Early positive review ratio vs 3-month CCU")
+    ax.grid(True, which="both", alpha=0.3)
+
+    # --- Right panel: 6×6 correlation heatmap ---
+    cols = [
+        WEEK1_COL,
+        "early_reviews_total",
+        "early_positive_ratio",
+        "metacritic_score",
+        "price_final_usd_cents",
+        target_col,
+    ]
+    corr_df = df[cols].dropna()
+    # filter sentinel metacritic_score == 0 (76% of rows per audit) for honest correlation
+    corr_df = corr_df[corr_df["metacritic_score"] > 0]
+    corr = corr_df.corr()
+    sns.heatmap(
+        corr, annot=True, fmt=".2f", cmap="RdBu_r", center=0, vmin=-1, vmax=1,
+        cbar_kws={"label": "Pearson r"}, ax=axes[1],
+        xticklabels=[c[:24] for c in corr.columns],
+        yticklabels=[c[:24] for c in corr.columns],
+    )
+    axes[1].set_title("Feature correlation heatmap (3-month)")
+
+    plt.tight_layout()
+    out = FIGURES_DIR / "06_exploration.png"
+    fig.savefig(out, dpi=200)
+    plt.close(fig)
+    print(f"  → {out}")
 
 
 # === MAIN / CLI ===
