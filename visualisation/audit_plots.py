@@ -266,8 +266,27 @@ def figure_3_pred_vs_actual() -> None:
 
 # === FIGURE 4: Residuals (Task 6) ===
 
-def figure_4_residuals(*args, **kwargs):
-    raise NotImplementedError("Task 6")
+def figure_4_residuals() -> None:
+    """1×3 grid: residuals (observed − predicted, log-CCU) vs predicted (log-CCU)."""
+    results = get_results()
+    horizons = ["3m", "6m", "12m"]
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    for ax, h in zip(axes, horizons):
+        res = results[(h, True, "GBR")]
+        residuals = res["y_test"] - res["y_pred"]
+        ax.scatter(res["y_pred"], residuals, alpha=0.4, s=10, color="steelblue")
+        ax.axhline(0, color="red", linestyle="--", linewidth=1)
+        ax.set_xlabel("Predicted (log-CCU)")
+        ax.set_ylabel("Residual (observed − predicted, log-CCU)")
+        ax.set_title(f"{h} horizon")
+        ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    out = FIGURES_DIR / "04_residuals.png"
+    fig.savefig(out, dpi=200)
+    plt.close(fig)
+    print(f"  → {out}")
 
 
 # === FIGURE 5: Week-1 vs Target (Task 7) ===
