@@ -173,8 +173,22 @@ def get_results() -> dict:
 
 # === FIGURE 1: Feature Importance (Task 3) ===
 
-def figure_1_feature_importance(*args, **kwargs):
-    raise NotImplementedError("Task 3")
+def figure_1_feature_importance() -> None:
+    """Top-10 GBR Gini feature importance, horizontal bar chart, 3-month horizon."""
+    results = get_results()
+    res = results[("3m", True, "GBR")]
+    importances = pd.Series(res["model"].feature_importances_, index=res["feature_names"])
+    top10 = importances.sort_values(ascending=True).tail(10)
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.barh(top10.index, top10.values, color="steelblue")
+    ax.set_xlabel("Gini importance")
+    ax.set_title("Top-10 features — Gradient Boosting Regressor (3-month horizon)")
+    plt.tight_layout()
+    out = FIGURES_DIR / "01_feature_importance.png"
+    fig.savefig(out, dpi=200)
+    plt.close(fig)
+    print(f"  → {out}")
 
 
 # === FIGURE 2: Model Comparison (Task 4) ===
