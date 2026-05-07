@@ -291,8 +291,50 @@ def figure_4_residuals() -> None:
 
 # === FIGURE 5: Week-1 vs Target (Task 7) ===
 
-def figure_5_week1_vs_target(*args, **kwargs):
-    raise NotImplementedError("Task 7")
+def figure_5_week1_vs_target() -> None:
+    """3×2 grid. Rows = horizons (3m/6m/12m). Cols = linear / log scale.
+    Each panel: scatter of players_7days vs target + linear regression trendline.
+    """
+    fig, axes = plt.subplots(3, 2, figsize=(12, 12))
+    for row, h in enumerate(["3m", "6m", "12m"]):
+        rel_path, target_col = HORIZONS[h]
+        df = pd.read_csv(DATA_DIR / rel_path)
+        df.columns = df.columns.str.strip().str.replace("﻿", "")
+        df = df.dropna(subset=[WEEK1_COL, target_col])
+        x = df[WEEK1_COL].values
+        y = df[target_col].values
+
+        for col, scale in enumerate(["linear", "log"]):
+            ax = axes[row, col]
+            ax.scatter(x, y, alpha=0.3, s=8, color="steelblue")
+            if scale == "log":
+                mask = (x > 0) & (y > 0)
+                if mask.sum() > 1:
+                    slope, intercept = np.polyfit(np.log(x[mask]), np.log(y[mask]), 1)
+                    xline = np.logspace(np.log10(x[mask].min()), np.log10(x[mask].max()), 100)
+                    yline = np.exp(intercept) * xline ** slope
+                    label = f"log-fit: slope = {slope:.2f}"
+                    ax.plot(xline, yline, "r-", linewidth=1.5, label=label)
+                ax.set_xscale("log")
+                ax.set_yscale("log")
+            else:
+                if len(x) > 1:
+                    slope, intercept = np.polyfit(x, y, 1)
+                    xline = np.linspace(x.min(), x.max(), 100)
+                    yline = slope * xline + intercept
+                    label = f"linear-fit: y = {slope:.2f}x + {intercept:.0f}"
+                    ax.plot(xline, yline, "r-", linewidth=1.5, label=label)
+            ax.set_xlabel(WEEK1_COL)
+            ax.set_ylabel(target_col)
+            ax.set_title(f"{h} horizon ({scale} scale)")
+            ax.legend(fontsize=8)
+            ax.grid(True, which="both", alpha=0.3)
+
+    plt.tight_layout()
+    out = FIGURES_DIR / "05_week1_vs_target.png"
+    fig.savefig(out, dpi=200)
+    plt.close(fig)
+    print(f"  → {out}")
 
 
 # === FIGURE 6: Exploration combo (Task 8) ===
