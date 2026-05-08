@@ -171,21 +171,71 @@ def get_results() -> dict:
     return _RESULTS_CACHE
 
 
-# === FIGURE 1: Feature Importance (Task 3) ===
+# === FIGURE 1: Top-10 example predictions (test + train) ===
 
-def figure_1_feature_importance() -> None:
-    """Top-10 GBR Gini feature importance, horizontal bar chart, 3-month horizon."""
-    results = get_results()
-    res = results[("3m", True, "GBR")]
-    importances = pd.Series(res["model"].feature_importances_, index=res["feature_names"])
-    top10 = importances.sort_values(ascending=True).tail(10)
+def figure_1_top10_predictions() -> None:
+    """Two panels: top-10 highest-actual-CCU titles in TRAIN (left) and TEST (right) sets,
+    each panel showing predicted CCU vs actual CCU side-by-side. Uses the 3-month
+    Gradient Boosting Regressor with the players_7days_after_release feature.
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.barh(top10.index, top10.values, color="steelblue")
-    ax.set_xlabel("Gini importance")
-    ax.set_title("Top-10 features — Gradient Boosting Regressor (3-month horizon)")
+    Numbers are raw CCU (back-transformed via np.expm1 from log-CCU) so the values are
+    directly meaningful to a managerial reader. Log x-axis because CCU spans several
+    orders of magnitude.
+    """
+    rel_path, target_col = HORIZONS["3m"]
+    df = pd.read_csv(DATA_DIR / rel_path)
+    df.columns = df.columns.str.strip().str.replace("﻿", "")
+    df = df.dropna(subset=[target_col]).reset_index(drop=True)
+    names = df["name"].astype(str)
+
+    # Re-derive X, y exactly as load_horizon does (RangeIndex, same row order)
+    X, y, _ = load_horizon("3m")
+
+    indices = np.arange(len(X))
+    tr_idx, te_idx = train_test_split(indices, test_size=TEST_SIZE, random_state=RANDOM_STATE)
+
+    res = get_results()[("3m", True, "GBR")]
+    model = res["model"]
+
+    X_tr = X.iloc[tr_idx]
+    y_tr = y.iloc[tr_idx]
+    y_tr_pred = model.predict(X_tr)
+
+    X_te = X.iloc[te_idx]
+    y_te = y.iloc[te_idx]
+    y_te_pred = model.predict(X_te)
+
+    def top10_frame(idx, y_true_log, y_pred_log):
+        return (
+            pd.DataFrame({
+                "name": names.iloc[idx].values,
+                "actual": np.expm1(y_true_log.values),
+                "predicted": np.expm1(y_pred_log),
+            })
+            .nlargest(10, "actual")
+            .iloc[::-1]  # reverse so largest sits at top of barh
+            .reset_index(drop=True)
+        )
+
+    tr_top = top10_frame(tr_idx, y_tr, y_tr_pred)
+    te_top = top10_frame(te_idx, y_te, y_te_pred)
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6), sharex=False)
+    bar_h = 0.4
+    for ax, label, top in zip(axes, ["train set", "test set"], [tr_top, te_top]):
+        y_pos = np.arange(len(top))
+        ax.barh(y_pos - bar_h / 2, top["actual"], bar_h, label="actual", color="steelblue")
+        ax.barh(y_pos + bar_h / 2, top["predicted"], bar_h, label="predicted", color="orange")
+        ax.set_yticks(y_pos)
+        ax.set_yticklabels([n[:32] for n in top["name"]], fontsize=9)
+        ax.set_xscale("log")
+        ax.set_xlabel("Average monthly CCU at month 3")
+        ax.set_title(f"Top-10 by actual CCU — {label}")
+        ax.legend(fontsize=9, loc="lower right")
+        ax.grid(True, axis="x", which="both", alpha=0.3)
+
     plt.tight_layout()
-    out = FIGURES_DIR / "01_feature_importance.png"
+    out = FIGURES_DIR / "01_top10_predictions.png"
     fig.savefig(out, dpi=200)
     plt.close(fig)
     print(f"  → {out}")
@@ -401,7 +451,7 @@ def figure_6_exploration() -> None:
 # === MAIN / CLI ===
 
 FIGURES = {
-    1: figure_1_feature_importance,
+    1: figure_1_top10_predictions,
     2: figure_2_model_comparison,
     3: figure_3_pred_vs_actual,
     4: figure_4_residuals,
