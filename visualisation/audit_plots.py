@@ -241,42 +241,41 @@ def figure_0_top10_predictions() -> None:
     print(f"  → {out}")
 
 
-# === FIGURE 1: Feature importance (permutation-based, model-output-derived) ===
+# === FIGURE 1: Feature importance (model attribute values, value-labelled) ===
 
 def figure_1_feature_importance() -> None:
-    """Top-10 permutation importance from the 3-month GBR (with players_7days_after_release),
-    computed on the held-out test set. Each bar value is the mean drop in R² when that
-    feature is randomly shuffled — i.e., a value derived from the model's actual prediction
-    outputs rather than from internal tree statistics (Gini).
+    """Top-10 values from the trained model's `feature_importances_` attribute
+    (3-month GBR with players_7days_after_release). Each bar is annotated with the
+    numeric value so the reader can read off, e.g., 0.8560 for the dominant feature.
     """
-    from sklearn.inspection import permutation_importance
-
-    X, y, _ = load_horizon("3m")
-    indices = np.arange(len(X))
-    _, te_idx = train_test_split(indices, test_size=TEST_SIZE, random_state=RANDOM_STATE)
-
     res = get_results()[("3m", True, "GBR")]
     model = res["model"]
-    X_te = X.iloc[te_idx]
-    y_te = y.iloc[te_idx]
-
-    print("  computing permutation importance (n_repeats=10, this takes ~1 min)...")
-    perm = permutation_importance(
-        model, X_te, y_te,
-        n_repeats=10, random_state=RANDOM_STATE, scoring="r2", n_jobs=-1,
-    )
-    importances = pd.Series(perm.importances_mean, index=X.columns)
+    importances = pd.Series(model.feature_importances_, index=res["feature_names"])
     top10 = importances.sort_values(ascending=True).tail(10)
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.barh(top10.index, top10.values, color="steelblue")
-    ax.set_xlabel("Permutation importance (mean drop in test R² when shuffled)")
-    ax.set_title("Top-10 features — permutation importance, GBR 3-month, test set")
+    fig, ax = plt.subplots(figsize=(9, 5))
+    bars = ax.barh(top10.index, top10.values, color="steelblue")
+    # numeric value labels on each bar
+    for bar, val in zip(bars, top10.values):
+        ax.text(
+            bar.get_width() + max(top10.values) * 0.01,
+            bar.get_y() + bar.get_height() / 2,
+            f"{val:.4f}",
+            va="center", fontsize=9,
+        )
+    # extend x-axis a bit so labels don't get clipped
+    ax.set_xlim(0, max(top10.values) * 1.12)
+    ax.set_xlabel("Feature importance value (model attribute, sums to 1.0 across all features)")
+    ax.set_title("Top-10 features by model importance — Gradient Boosting Regressor (3-month)")
     plt.tight_layout()
     out = FIGURES_DIR / "01_feature_importance.png"
     fig.savefig(out, dpi=200)
     plt.close(fig)
     print(f"  → {out}")
+    # also print the top-10 values to stdout for the user's reference
+    print("  Top-10 values:")
+    for name, val in top10.iloc[::-1].items():
+        print(f"    {val:.4f}  {name}")
 
 
 # === FIGURE 2: Model Comparison (Task 4) ===
