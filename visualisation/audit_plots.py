@@ -241,41 +241,52 @@ def figure_0_top10_predictions() -> None:
     print(f"  → {out}")
 
 
-# === FIGURE 1: Feature importance (model attribute values, value-labelled) ===
+# === FIGURE 1: Feature importance per horizon (3m / 6m / 12m) ===
 
 def figure_1_feature_importance() -> None:
-    """Top-10 values from the trained model's `feature_importances_` attribute
-    (3-month GBR with players_7days_after_release). Each bar is annotated with the
-    numeric value so the reader can read off, e.g., 0.8560 for the dominant feature.
+    """1×3 grid. One panel per horizon (3m / 6m / 12m). Each panel shows the top-10
+    values from the GBR's `feature_importances_` attribute, with the numeric value
+    annotated on each bar. Shared x-axis across panels so the importance distributions
+    are visually comparable across horizons.
     """
-    res = get_results()[("3m", True, "GBR")]
-    model = res["model"]
-    importances = pd.Series(model.feature_importances_, index=res["feature_names"])
-    top10 = importances.sort_values(ascending=True).tail(10)
+    horizons = ["3m", "6m", "12m"]
+    # collect top-10 per horizon and the global max for the shared x-axis
+    panels = []
+    global_max = 0.0
+    for h in horizons:
+        res = get_results()[(h, True, "GBR")]
+        importances = pd.Series(res["model"].feature_importances_, index=res["feature_names"])
+        top10 = importances.sort_values(ascending=True).tail(10)
+        panels.append((h, top10))
+        global_max = max(global_max, float(top10.values.max()))
 
-    fig, ax = plt.subplots(figsize=(9, 5))
-    bars = ax.barh(top10.index, top10.values, color="steelblue")
-    # numeric value labels on each bar
-    for bar, val in zip(bars, top10.values):
-        ax.text(
-            bar.get_width() + max(top10.values) * 0.01,
-            bar.get_y() + bar.get_height() / 2,
-            f"{val:.4f}",
-            va="center", fontsize=9,
-        )
-    # extend x-axis a bit so labels don't get clipped
-    ax.set_xlim(0, max(top10.values) * 1.12)
-    ax.set_xlabel("Feature importance value (model attribute, sums to 1.0 across all features)")
-    ax.set_title("Top-10 features by model importance — Gradient Boosting Regressor (3-month)")
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5), sharex=True)
+    for ax, (h, top10) in zip(axes, panels):
+        bars = ax.barh(top10.index, top10.values, color="steelblue")
+        for bar, val in zip(bars, top10.values):
+            ax.text(
+                bar.get_width() + global_max * 0.01,
+                bar.get_y() + bar.get_height() / 2,
+                f"{val:.4f}",
+                va="center", fontsize=8,
+            )
+        ax.set_xlim(0, global_max * 1.18)
+        ax.set_xlabel("Feature importance value")
+        ax.set_title(f"{h} horizon — top-10 features (GBR)")
+        ax.tick_params(axis="y", labelsize=8)
+
+    fig.suptitle("Feature importance values from `model.feature_importances_` (sum to 1.0 per panel)", y=1.02, fontsize=11)
     plt.tight_layout()
     out = FIGURES_DIR / "01_feature_importance.png"
-    fig.savefig(out, dpi=200)
+    fig.savefig(out, dpi=200, bbox_inches="tight")
     plt.close(fig)
     print(f"  → {out}")
-    # also print the top-10 values to stdout for the user's reference
-    print("  Top-10 values:")
-    for name, val in top10.iloc[::-1].items():
-        print(f"    {val:.4f}  {name}")
+
+    # also print the top-10 per horizon to stdout for the user's reference
+    for h, top10 in panels:
+        print(f"\n  Top-10 values ({h}):")
+        for name, val in top10.iloc[::-1].items():
+            print(f"    {val:.4f}  {name}")
 
 
 # === FIGURE 2: Model Comparison (Task 4) ===
