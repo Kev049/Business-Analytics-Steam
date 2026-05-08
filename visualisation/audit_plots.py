@@ -171,9 +171,9 @@ def get_results() -> dict:
     return _RESULTS_CACHE
 
 
-# === FIGURE 1: Top-10 example predictions (test + train) ===
+# === FIGURE 0: Top-10 example predictions (test + train) ===
 
-def figure_1_top10_predictions() -> None:
+def figure_0_top10_predictions() -> None:
     """Two panels: top-10 highest-actual-CCU titles in TRAIN (left) and TEST (right) sets,
     each panel showing predicted CCU vs actual CCU side-by-side. Uses the 3-month
     Gradient Boosting Regressor with the players_7days_after_release feature.
@@ -235,7 +235,45 @@ def figure_1_top10_predictions() -> None:
         ax.grid(True, axis="x", which="both", alpha=0.3)
 
     plt.tight_layout()
-    out = FIGURES_DIR / "01_top10_predictions.png"
+    out = FIGURES_DIR / "00_top10_predictions.png"
+    fig.savefig(out, dpi=200)
+    plt.close(fig)
+    print(f"  → {out}")
+
+
+# === FIGURE 1: Feature importance (permutation-based, model-output-derived) ===
+
+def figure_1_feature_importance() -> None:
+    """Top-10 permutation importance from the 3-month GBR (with players_7days_after_release),
+    computed on the held-out test set. Each bar value is the mean drop in R² when that
+    feature is randomly shuffled — i.e., a value derived from the model's actual prediction
+    outputs rather than from internal tree statistics (Gini).
+    """
+    from sklearn.inspection import permutation_importance
+
+    X, y, _ = load_horizon("3m")
+    indices = np.arange(len(X))
+    _, te_idx = train_test_split(indices, test_size=TEST_SIZE, random_state=RANDOM_STATE)
+
+    res = get_results()[("3m", True, "GBR")]
+    model = res["model"]
+    X_te = X.iloc[te_idx]
+    y_te = y.iloc[te_idx]
+
+    print("  computing permutation importance (n_repeats=10, this takes ~1 min)...")
+    perm = permutation_importance(
+        model, X_te, y_te,
+        n_repeats=10, random_state=RANDOM_STATE, scoring="r2", n_jobs=-1,
+    )
+    importances = pd.Series(perm.importances_mean, index=X.columns)
+    top10 = importances.sort_values(ascending=True).tail(10)
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.barh(top10.index, top10.values, color="steelblue")
+    ax.set_xlabel("Permutation importance (mean drop in test R² when shuffled)")
+    ax.set_title("Top-10 features — permutation importance, GBR 3-month, test set")
+    plt.tight_layout()
+    out = FIGURES_DIR / "01_feature_importance.png"
     fig.savefig(out, dpi=200)
     plt.close(fig)
     print(f"  → {out}")
@@ -451,7 +489,8 @@ def figure_6_exploration() -> None:
 # === MAIN / CLI ===
 
 FIGURES = {
-    1: figure_1_top10_predictions,
+    0: figure_0_top10_predictions,
+    1: figure_1_feature_importance,
     2: figure_2_model_comparison,
     3: figure_3_pred_vs_actual,
     4: figure_4_residuals,
@@ -462,11 +501,11 @@ FIGURES = {
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fig", type=int, choices=range(1, 7),
-                        help="Generate just one figure (1-6). Omit to generate all.")
+    parser.add_argument("--fig", type=int, choices=range(0, 7),
+                        help="Generate just one figure (0-6). Omit to generate all.")
     args = parser.parse_args()
 
-    targets = [args.fig] if args.fig else list(FIGURES.keys())
+    targets = [args.fig] if args.fig is not None else list(FIGURES.keys())
     for n in targets:
         print(f"=== Figure {n}: {FIGURES[n].__name__} ===")
         try:
