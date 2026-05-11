@@ -96,10 +96,16 @@ MARATHON_FEATURES = {
     "tag__hero_shooter": 1,
 }
 
-# Three week-1 input scenarios (raw CCU; will be log1p-transformed at predict-time)
+# Three week-1 input scenarios (raw CCU; will be log1p-transformed at predict-time).
+# The "Empirical" middle scenario is Marathon's actual first-7-day average CCU on
+# Steam, computed from SteamCharts daily snapshots covering 2026-03-07 through
+# 2026-03-14 (the chart series starts on day 2 post-launch; the average across
+# those 8 daily snapshots is 65,778). The Low and High brackets retain the
+# sensitivity context: Low = March 2026 monthly average (biased downward by
+# post-peak decay); High = launch-day peak.
 MARATHON_WEEK1_SCENARIOS = [
     ("Low (March 2026 avg)", 35040),
-    ("Mid (geom mean avg/peak)", 52063),
+    ("Empirical (first-7-day avg, SteamCharts)", 65778),
     ("High (launch-day peak)", 77358),
 ]
 
