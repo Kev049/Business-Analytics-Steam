@@ -18,6 +18,7 @@ from the parent folder.
 | `04_residuals.png` | 1×3 grid. Residuals (observed − predicted, log-CCU) vs predicted, per horizon. |
 | `05_week1_vs_target.png` | 3×2 grid. `players_7days_after_release` vs target per horizon × linear/log scale, with regression trendline. |
 | `06_exploration.png` | Two-panel. Left: `early_positive_ratio` vs 3-month CCU scatter (log y). Right: 6×6 correlation heatmap. |
+| `07_marathon_case_study.png` | Marathon (2026) case study, 1×2 panel. Left: predicted average monthly CCU at 3/6/12-month horizons under three week-1 input scenarios (Low/Mid/High). Right: observed Steam trajectory (Mar–May 2026) overlaid with the three predicted-trajectory bands and a naive -55%/mo decay baseline. Inputs sourced from Wikipedia / Steam store / SteamCharts on 2026-05-11. |
 
 All figures use `random_state=42` and a single 85/15 random split (matches
 Kevin's setup). All 200 DPI.
