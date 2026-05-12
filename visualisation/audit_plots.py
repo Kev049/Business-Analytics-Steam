@@ -49,6 +49,73 @@ GBR_KWARGS = dict(n_estimators=150, max_depth=3, learning_rate=0.05, random_stat
 RF_KWARGS = dict(n_estimators=200, max_depth=None, n_jobs=-1, random_state=RANDOM_STATE)
 LASSO_KWARGS = dict(alpha=0.01)
 
+# --- Marathon (2026) case study --------------------------------------------------
+# Inputs sourced from Wikipedia / Steam store / SteamCharts on 2026-05-11. Marathon
+# released 2026-03-05 (Steam App 3065800, Bungie). Used by figure 7. The exact
+# `players_7days_after_release` value is not published; figure 7 runs three
+# scenarios (March monthly avg / geometric mean / launch-day peak).
+MARATHON_FEATURES = {
+    "required_age": 17,
+    "is_free": 0,
+    "coming_soon": 0,
+    "price_initial_usd_cents": 3999,
+    "price_final_usd_cents": 3999,
+    "metacritic_score": 82,
+    "achievements_total": 14,
+    "dlc_count": 1,
+    "supports_windows": 1,
+    "supports_mac": 0,
+    "supports_linux": 0,
+    "early_reviews_window_available": 1,
+    "early_reviews_total": 37422,
+    "early_reviews_positive": 32557,
+    "early_reviews_negative": 4865,
+    "early_review_score": 87,
+    "early_positive_ratio": 0.87,
+    "genre__action": 1,
+    "category__multi_player": 1,
+    "category__online_pvp": 1,
+    "category__pvp": 1,
+    "category__cross_platform_multiplayer": 1,
+    "category__family_sharing": 1,
+    "tag__shooter": 1,
+    "tag__fps": 1,
+    "tag__pvp": 1,
+    "tag__multiplayer": 1,
+    "tag__sci_fi": 1,
+    "tag__action": 1,
+    "tag__first_person": 1,
+    "tag__pve": 1,
+    "tag__cyberpunk": 1,
+    "tag__survival": 1,
+    "tag__online_co_op": 1,
+    "tag__class_based": 1,
+    "tag__inventory_management": 1,
+    "tag__character_customization": 1,
+    "tag__futuristic": 1,
+    "tag__hero_shooter": 1,
+}
+
+# Three week-1 input scenarios (raw CCU; will be log1p-transformed at predict-time).
+# The "Empirical" middle scenario is Marathon's actual first-7-day average CCU on
+# Steam, computed from SteamCharts daily snapshots covering 2026-03-07 through
+# 2026-03-14 (the chart series starts on day 2 post-launch; the average across
+# those 8 daily snapshots is 65,778). The Low and High brackets retain the
+# sensitivity context: Low = March 2026 monthly average (biased downward by
+# post-peak decay); High = launch-day peak.
+MARATHON_WEEK1_SCENARIOS = [
+    ("Low (March 2026 avg)", 35040),
+    ("Empirical (first-7-day avg, SteamCharts)", 65778),
+    ("High (launch-day peak)", 77358),
+]
+
+# Observed Steam trajectory (months-since-launch, average CCU, label)
+MARATHON_OBSERVED = [
+    (0, 35040, "Mar 2026"),
+    (1, 15833, "Apr 2026"),
+    (2, 3869, "May 2026"),
+]
+
 # === DATA LOADING (Task 2) ===
 
 def load_horizon(horizon: str) -> tuple[pd.DataFrame, pd.Series, list[str]]:
@@ -496,6 +563,121 @@ def figure_6_exploration() -> None:
     print(f"  → {out}")
 
 
+# === FIGURE 7: Marathon (2026) case study ===
+
+def _predict_marathon_horizon(horizon_key: str, week1_ccu: float) -> float:
+    """Train a GBR on Kevin's data for the given horizon, then predict Marathon's
+    average monthly CCU at that horizon for a given week-1 input. Returns raw CCU."""
+    X, y, feat_names = load_horizon(horizon_key)
+    X_tr, _X_te, y_tr, _y_te = train_test_split(
+        X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE
+    )
+    gbr = GradientBoostingRegressor(**GBR_KWARGS).fit(X_tr, y_tr)
+
+    # Build Marathon's feature row in the trained column order. Unset features = 0
+    # (correct for one-hot categoricals; matches Kevin's CSV convention where a
+    # missing tag/category is 0). Numeric features Marathon has are set explicitly.
+    row = pd.Series(0.0, index=feat_names)
+    payload = {**MARATHON_FEATURES, "players_7days_after_release": week1_ccu}
+    for k, v in payload.items():
+        if k in row.index:
+            row[k] = v
+    # Apply the same log1p transform load_horizon already applied to X_tr
+    for c in row.index:
+        if "review" in c.lower() or "player" in c.lower():
+            row[c] = np.log1p(row[c])
+
+    pred_log = gbr.predict(pd.DataFrame([row]))[0]
+    return float(np.expm1(pred_log))
+
+
+def figure_7_marathon() -> None:
+    """1×2 panel for Marathon (2026) case study.
+
+    Left: predicted average monthly CCU at the 3/6/12-month horizons under three
+    week-1 input scenarios (Low / Mid / High).
+    Right: observed Steam trajectory (Mar-May 2026) overlaid with the three
+    predicted-trajectory bands and a naive -55%-per-month decay baseline.
+    """
+    horizons = ["3m", "6m", "12m"]
+    scenario_labels = [s[0] for s in MARATHON_WEEK1_SCENARIOS]
+
+    print("  Training GBR per horizon and predicting Marathon CCU ...")
+    predictions: dict[tuple[str, str], float] = {}
+    for h in horizons:
+        for label, week1 in MARATHON_WEEK1_SCENARIOS:
+            predictions[(h, label)] = _predict_marathon_horizon(h, float(week1))
+            print(f"    {h:>3} | {label:<28} (week1={week1:>6,}) → {predictions[(h, label)]:>9,.0f} CCU")
+
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+    colors = ["#9ec5e8", "#4d8fd1", "#1f4e79"]  # graded blue: Low / Mid / High
+
+    # --- LEFT: predicted CCU bars per horizon, three scenarios -----------------
+    x = np.arange(len(horizons))
+    width = 0.26
+    ax = axes[0]
+    for i, label in enumerate(scenario_labels):
+        vals = [predictions[(h, label)] for h in horizons]
+        bars = ax.bar(x + (i - 1) * width, vals, width, color=colors[i],
+                      edgecolor="k", linewidth=0.3, label=label)
+        for bar, v in zip(bars, vals):
+            ax.text(bar.get_x() + bar.get_width() / 2, v + max(vals) * 0.02,
+                    f"{int(v):,}", ha="center", va="bottom", fontsize=8)
+    ax.set_xticks(x)
+    ax.set_xticklabels(["3-month", "6-month", "12-month"])
+    ax.set_xlabel("Prediction horizon")
+    ax.set_ylabel("Predicted average monthly CCU")
+    ax.set_title("Predicted CCU per horizon under three week-1 input scenarios")
+    ax.legend(title="Week-1 CCU input", fontsize=9, title_fontsize=9, loc="upper right")
+    ax.grid(True, axis="y", alpha=0.3)
+
+    # --- RIGHT: observed trajectory + predicted bands + naive baseline ---------
+    ax = axes[1]
+    obs_x = [t[0] for t in MARATHON_OBSERVED]
+    obs_y = [t[1] for t in MARATHON_OBSERVED]
+    ax.plot(obs_x, obs_y, "o-", color="black", linewidth=2.2, markersize=9,
+            label="Observed Steam avg CCU", zorder=10)
+    for mx, my, _ in MARATHON_OBSERVED:
+        ax.annotate(f"{int(my):,}", (mx, my), textcoords="offset points",
+                    xytext=(7, 8), fontsize=8, fontweight="bold")
+
+    pred_months = [3, 6, 12]
+    for i, label in enumerate(scenario_labels):
+        pred_y = [predictions[(f"{m}m", label)] for m in pred_months]
+        connect_x = [obs_x[-1]] + pred_months
+        connect_y = [obs_y[-1]] + pred_y
+        ax.plot(connect_x, connect_y, "--", color=colors[i], linewidth=1.6,
+                marker="s", markersize=7, label=f"Model: {label}")
+
+    # Naive -55%/mo decay anchored on April 2026 (the last full month of decay)
+    naive_x = [1, 2, 3, 6, 12]
+    base_april = 15833
+    decay = 0.45  # i.e. -55% MoM
+    naive_y = [base_april * (decay ** (m - 1)) for m in naive_x]
+    ax.plot(naive_x, naive_y, ":", color="#888", linewidth=1.5,
+            marker="^", markersize=6, label="Naive -55%/mo decay")
+
+    ax.set_xticks([0, 1, 2, 3, 6, 12])
+    ax.set_xticklabels(["0\nMar‧26", "1\nApr", "2\nMay", "3\nJun",
+                         "6\nSep", "12\nMar‧27"])
+    ax.set_xlabel("Months since launch (2026-03-05)")
+    ax.set_ylabel("Average monthly CCU")
+    ax.set_title("CCU trajectory: observed Mar–May 2026 vs predicted Jun-2026–Mar-2027")
+    ax.legend(fontsize=8, loc="upper right")
+    ax.grid(True, alpha=0.3)
+    ax.set_ylim(bottom=0)
+
+    fig.suptitle(
+        "Case study: Marathon (2026) — Bungie · Steam App 3065800 · released 2026-03-05",
+        fontsize=12, y=1.02, fontweight="bold",
+    )
+    plt.tight_layout()
+    out = FIGURES_DIR / "07_marathon_case_study.png"
+    fig.savefig(out, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  → {out}")
+
+
 # === MAIN / CLI ===
 
 FIGURES = {
@@ -506,13 +688,14 @@ FIGURES = {
     4: figure_4_residuals,
     5: figure_5_week1_vs_target,
     6: figure_6_exploration,
+    7: figure_7_marathon,
 }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fig", type=int, choices=range(0, 7),
-                        help="Generate just one figure (0-6). Omit to generate all.")
+    parser.add_argument("--fig", type=int, choices=range(0, 8),
+                        help="Generate just one figure (0-7). Omit to generate all.")
     args = parser.parse_args()
 
     targets = [args.fig] if args.fig is not None else list(FIGURES.keys())
