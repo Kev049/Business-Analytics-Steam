@@ -2,16 +2,16 @@ import pandas as pd
 import numpy as np
 
 from sklearn.model_selection import train_test_split
+from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.impute import SimpleImputer
 
-from sklearn.linear_model import Lasso, Ridge
-from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestRegressor
 
 # =====================
 # 1. LOAD DATA
 # =====================
-file_path = r"models-6-5\three_months_model\three_month_final.csv"
+file_path = r"models-6-5\twelve_months_model\twelve_month_final.csv"
 df = pd.read_csv(file_path)
 
 # =====================
@@ -22,7 +22,7 @@ df.columns = df.columns.str.strip().str.replace('\ufeff', '')
 # =====================
 # 3. DEFINE TARGET
 # =====================
-target_col = "players_month_3_after_release"
+target_col = "players_month_12_after_release"
 
 if target_col not in df.columns:
     raise ValueError(f"Target column '{target_col}' not found.")
@@ -93,40 +93,57 @@ X_train, X_test, y_train, y_test = train_test_split(
 )
 
 # =====================
-# 9.5 SCALE FEATURES (ONLY FOR LINEAR REGRESSION)
-# =====================
-scaler = StandardScaler()
-
-X_train = scaler.fit_transform(X_train)   # fit ONLY on train
-X_test = scaler.transform(X_test)         # apply same scaling to test
-
-# =====================
 # 10. MODEL
 # =====================
-model_lr = Lasso(alpha=0.045)
+model = GradientBoostingRegressor(
+    n_estimators=150,
+    max_depth=3,
+    learning_rate=0.05,
+    random_state=42
+)
+
+model_rf = RandomForestRegressor(
+    n_estimators=200,
+    max_depth=None,
+    random_state=42,
+    n_jobs=-1
+)
 
 # =====================
 # 11. TRAIN
 # =====================
-model_lr.fit(X_train, y_train)
+model.fit(X_train, y_train)
+
+model_rf.fit(X_train, y_train)
 
 
 # =====================
 # 12. PREDICT
 # =====================
-y_pred_lr = model_lr.predict(X_test)
+y_pred = model.predict(X_test)
+
+y_pred_rf = model_rf.predict(X_test)
 
 # =====================
 # 13. EVALUATE
 # =====================
 
-print("\nLinear Regression Performance:")
+print("Gradient Boosting Regressor Performance:")
 
-mae_lr = mean_absolute_error(y_test, y_pred_lr)
-r2_lr = r2_score(y_test, y_pred_lr)
+mae = mean_absolute_error(y_test, y_pred)
+r2 = r2_score(y_test, y_pred)
 
-print(f"MAE (log scale): {mae_lr:.4f}")
-print(f"R² Score: {r2_lr:.4f}")
+print("Model Performance:")
+print(f"MAE (log scale): {mae:.4f}")
+print(f"R² Score: {r2:.4f}")
+
+print("\nRandom Forest Regressor Performance:")
+
+mae_rf = mean_absolute_error(y_test, y_pred_rf)
+r2_rf = r2_score(y_test, y_pred_rf)
+
+print(f"MAE (log scale): {mae_rf:.4f}")
+print(f"R² Score: {r2_rf:.4f}")
 
 print(y.describe())
 
@@ -134,6 +151,6 @@ print(y.describe())
 # # =====================
 # # 14. FEATURE IMPORTANCE
 # # =====================
-importances = pd.Series(model_lr.coef_, index=X.columns)
-print("\nTop 10 Important Features:")
-print(importances.sort_values(ascending=False).head(3))
+# importances = pd.Series(model.feature_importances_, index=X.columns)
+# print("\nTop 10 Important Features:")
+# print(importances.sort_values(ascending=False).head(10))

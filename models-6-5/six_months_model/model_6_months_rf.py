@@ -6,6 +6,8 @@ from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.impute import SimpleImputer
 
+from sklearn.ensemble import RandomForestRegressor
+
 # =====================
 # 1. LOAD DATA
 # =====================
@@ -31,10 +33,22 @@ df = df.dropna(subset=[target_col])
 # =====================
 # 4. DROP IRRELEVANT COLUMNS
 # =====================
+print(f"Rows before filtering: {len(df)}")
+
+filter_col = "players_7days_after_release"
+
+if filter_col not in df.columns:
+    raise ValueError(f"Filter column '{filter_col}' not found.")
+
+df = df[df[filter_col] >= 100]
+
+print(f"Rows after filtering: {len(df)}")
+
 drop_cols = [
     col for col in df.columns
     if "name" in col.lower() or "app_id" in col.lower()
 ]
+
 
 # =====================
 # 5. ENCODE CATEGORICALS
@@ -68,7 +82,7 @@ for col in X.columns:
     if "review" in col.lower() or "player" in col.lower():
         X[col] = np.log1p(X[col])
 
-# Log transform target
+# Log transform target (IMPORTANT)
 y = np.log1p(y)
 
 # =====================
@@ -88,19 +102,34 @@ model = GradientBoostingRegressor(
     random_state=42
 )
 
+model_rf = RandomForestRegressor(
+    n_estimators=200,
+    max_depth=None,
+    random_state=42,
+    n_jobs=-1
+)
+
 # =====================
 # 11. TRAIN
 # =====================
 model.fit(X_train, y_train)
+
+model_rf.fit(X_train, y_train)
+
 
 # =====================
 # 12. PREDICT
 # =====================
 y_pred = model.predict(X_test)
 
+y_pred_rf = model_rf.predict(X_test)
+
 # =====================
 # 13. EVALUATE
 # =====================
+
+print("Gradient Boosting Regressor Performance:")
+
 mae = mean_absolute_error(y_test, y_pred)
 r2 = r2_score(y_test, y_pred)
 
@@ -108,9 +137,20 @@ print("Model Performance:")
 print(f"MAE (log scale): {mae:.4f}")
 print(f"R² Score: {r2:.4f}")
 
-# =====================
-# 14. FEATURE IMPORTANCE
-# =====================
-importances = pd.Series(model.feature_importances_, index=X.columns)
-print("\nTop 10 Important Features:")
-print(importances.sort_values(ascending=False).head(10))
+print("\nRandom Forest Regressor Performance:")
+
+mae_rf = mean_absolute_error(y_test, y_pred_rf)
+r2_rf = r2_score(y_test, y_pred_rf)
+
+print(f"MAE (log scale): {mae_rf:.4f}")
+print(f"R² Score: {r2_rf:.4f}")
+
+print(y.describe())
+
+
+# # =====================
+# # 14. FEATURE IMPORTANCE
+# # =====================
+# importances = pd.Series(model.feature_importances_, index=X.columns)
+# print("\nTop 10 Important Features:")
+# print(importances.sort_values(ascending=False).head(10))

@@ -33,10 +33,22 @@ df = df.dropna(subset=[target_col])
 # =====================
 # 4. DROP IRRELEVANT COLUMNS
 # =====================
+print(f"Rows before filtering: {len(df)}")
+
+filter_col = "players_7days_after_release"
+
+if filter_col not in df.columns:
+    raise ValueError(f"Filter column '{filter_col}' not found.")
+
+df = df[df[filter_col] >= 100]
+
+print(f"Rows after filtering: {len(df)}")
+
 drop_cols = [
     col for col in df.columns
     if "name" in col.lower() or "app_id" in col.lower()
 ]
+
 
 # =====================
 # 5. ENCODE CATEGORICALS
