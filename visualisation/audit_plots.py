@@ -172,18 +172,21 @@ def get_results() -> dict:
     return _RESULTS_CACHE
 
 
-# === FIGURE 0: Top-10 example predictions (test + train) ===
+# === FIGURE 0 / 8 / 9: Top-10 example predictions (test + train) per horizon ===
 
-def figure_0_top10_predictions() -> None:
-    """Two panels: top-10 highest-actual-CCU titles in TRAIN (left) and TEST (right) sets,
-    each panel showing predicted CCU vs actual CCU side-by-side. Uses the 3-month
-    Gradient Boosting Regressor with the players_7days_after_release feature.
+def _top10_predictions_for_horizon(horizon: str, month_label: str, out_filename: str) -> None:
+    """Render the top-10 train vs test predictions figure for a given horizon.
 
-    Numbers are raw CCU (back-transformed via np.expm1 from log-CCU) so the values are
-    directly meaningful to a managerial reader. Log x-axis because CCU spans several
-    orders of magnitude.
+    Two panels: top-10 highest-actual-CCU titles in TRAIN (left) and TEST (right)
+    sets, each panel showing predicted CCU vs actual CCU side-by-side. Uses the
+    horizon-specific Gradient Boosting Regressor with the
+    players_7days_after_release feature.
+
+    Numbers are raw CCU (back-transformed via np.expm1 from log-CCU) so the values
+    are directly meaningful to a managerial reader. Log x-axis because CCU spans
+    several orders of magnitude.
     """
-    rel_path, target_col = HORIZONS["3m"]
+    rel_path, target_col = HORIZONS[horizon]
     df = pd.read_csv(DATA_DIR / rel_path)
     df.columns = df.columns.str.strip().str.replace("﻿", "")
     df = df.dropna(subset=[target_col])
@@ -191,12 +194,12 @@ def figure_0_top10_predictions() -> None:
     names = df["name"].astype(str)
 
     # Re-derive X, y exactly as load_horizon does (RangeIndex, same row order)
-    X, y, _ = load_horizon("3m")
+    X, y, _ = load_horizon(horizon)
 
     indices = np.arange(len(X))
     tr_idx, te_idx = train_test_split(indices, test_size=TEST_SIZE, random_state=RANDOM_STATE)
 
-    res = get_results()[("3m", True, "GBR")]
+    res = get_results()[(horizon, True, "GBR")]
     model = res["model"]
 
     X_tr = X.iloc[tr_idx]
@@ -231,16 +234,31 @@ def figure_0_top10_predictions() -> None:
         ax.set_yticks(y_pos)
         ax.set_yticklabels([n[:32] for n in top["name"]], fontsize=9)
         ax.set_xscale("log")
-        ax.set_xlabel("Average monthly CCU at month 3")
+        ax.set_xlabel(f"Average monthly CCU at {month_label}")
         ax.set_title(f"Top-10 by actual CCU — {label}")
         ax.legend(fontsize=9, loc="lower right")
         ax.grid(True, axis="x", which="both", alpha=0.3)
 
     plt.tight_layout()
-    out = FIGURES_DIR / "00_top10_predictions.png"
+    out = FIGURES_DIR / out_filename
     fig.savefig(out, dpi=200)
     plt.close(fig)
     print(f"  → {out}")
+
+
+def figure_0_top10_predictions() -> None:
+    """Top-10 train vs test predictions at the 3-month horizon."""
+    _top10_predictions_for_horizon("3m", "month 3", "00_top10_predictions.png")
+
+
+def figure_8_top10_predictions_6m() -> None:
+    """Top-10 train vs test predictions at the 6-month horizon (Appendix)."""
+    _top10_predictions_for_horizon("6m", "month 6", "00_top10_predictions_6m.png")
+
+
+def figure_9_top10_predictions_12m() -> None:
+    """Top-10 train vs test predictions at the 12-month horizon (Appendix)."""
+    _top10_predictions_for_horizon("12m", "month 12", "00_top10_predictions_12m.png")
 
 
 # === FIGURE 1: Feature importance per horizon (3m / 6m / 12m) ===
@@ -512,13 +530,16 @@ FIGURES = {
     4: figure_4_residuals,
     5: figure_5_week1_vs_target,
     6: figure_6_exploration,
+    # 7 was Marathon, moved to ../marathon/predict_marathon.py
+    8: figure_8_top10_predictions_6m,
+    9: figure_9_top10_predictions_12m,
 }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fig", type=int, choices=range(0, 7),
-                        help="Generate just one figure (0-6). Omit to generate all.")
+    parser.add_argument("--fig", type=int, choices=list(FIGURES.keys()),
+                        help="Generate just one figure (0-6, 8, 9). Omit to generate all.")
     args = parser.parse_args()
 
     targets = [args.fig] if args.fig is not None else list(FIGURES.keys())

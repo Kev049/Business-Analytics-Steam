@@ -14,6 +14,9 @@ now applies the same filter so the figures reflect Kevin's modeling subset.
 
 | File | What it shows |
 |---|---|
+| `00_top10_predictions.png` | Top-10 by actual CCU in train (left) and test (right) sets at the 3-month horizon. Used in §6.3. |
+| `00_top10_predictions_6m.png` | Same as above but at the 6-month horizon. Shipped to the Appendix. |
+| `00_top10_predictions_12m.png` | Same as above but at the 12-month horizon. Shipped to the Appendix. |
 | `01_feature_importance.png` | Top-10 Gini importances from the 3-month Gradient Boosting Regressor. |
 | `02_model_comparison.png` | 2×2 grid. Rows: with/without `players_7days_after_release` feature. Cols: R² / MAE. Bars = LR / RF / GBR per horizon. |
 | `03_pred_vs_actual.png` | 1×3 grid. Predicted vs actual CCU per horizon, log-log, with `y = x` reference. |
