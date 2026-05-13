@@ -1,15 +1,14 @@
 """
-predict_marathon.py — Marathon (2026) case study, single 3-month horizon.
+predict_marathon.py — Marathon (2026) case study.
 
-Trains a GBR on Kevin's 3-month dataset, then predicts Marathon's CCU at
-three months post-launch using the feature row produced by the project's
-data pipeline (`marathon_features.csv`, semicolon-delimited; sourced
-2026-05-12). The `players_7days_after_release` column is the exact CCU
-snapshot at the seven-days-after-release date, not a 7-day average.
+Trains the production-equivalent GBR per horizon on Kevin's data, then predicts
+Marathon's average monthly CCU at 3, 6 and 12 months post-launch using the
+feature row produced by Dominik's data pipeline (`marathon_features.csv`,
+semicolon-delimited; sourced 2026-05-12).
 
-Preprocessing matches `../visualisation/audit_plots.py`:
-  - drop rows with missing 3-month target
-  - apply the >=100 day-7 CCU cutoff
+Preprocessing matches `../visualisation/audit_plots.py` exactly:
+  - drop rows with missing target
+  - apply the >=100 first-week-players cutoff (matches all three Kevin scripts)
   - mean-impute numeric features
   - log1p any column whose name contains "review" or "player"
   - 85/15 random split with seed 42
@@ -20,7 +19,7 @@ Usage:
 
 Output:
     figures/07_marathon_case_study.png    (1x2 panel)
-    stdout: scenario prediction table at the 3-month horizon
+    stdout: scenario × horizon prediction table
 """
 
 from __future__ import annotations
@@ -45,6 +44,8 @@ FIGURES_DIR.mkdir(exist_ok=True)
 
 HORIZONS = {
     "3m": ("three_months_model/three_month_final.csv", "players_month_3_after_release"),
+    "6m": ("six_months_model/six_month_final.csv", "players_month_6_after_release"),
+    "12m": ("twelve_months_model/twelve_month_final.csv", "players_month_12_after_release"),
 }
 WEEK1_COL = "players_7days_after_release"
 RANDOM_STATE = 42
@@ -135,47 +136,38 @@ def predict_marathon(gbr: GradientBoostingRegressor, feat_names: list[str],
 # === FIGURE ===
 
 def render_figure(predictions: dict, marathon: pd.Series, empirical_week1: float) -> Path:
-    """1x2 figure for the single-horizon Marathon case study.
-
-    Left panel:  three predicted-CCU bars at the 3-month horizon, one per week-1
-                 input scenario (Low / Empirical / High), with value labels.
-    Right panel: observed Steam CCU trajectory (months 0-2 = Mar-May 2026) plus
-                 the three predicted points at month 3, plus a naive -55%/mo
-                 decay baseline anchored on the April 2026 average.
-    """
+    """1x2 figure mirroring the layout established in audit_plots.py figure_7."""
+    horizons = ["3m", "6m", "12m"]
     scenarios = [
         ("Low (March 2026 avg)", LOW_WEEK1),
-        ("Empirical (pipeline)", int(empirical_week1)),
+        (f"Empirical (Dominik, first-7-day avg)", int(empirical_week1)),
         ("High (launch-day peak)", HIGH_WEEK1),
     ]
     scenario_labels = [s[0] for s in scenarios]
-    horizon = "3m"
 
     fig, axes = plt.subplots(1, 2, figsize=(16, 6))
     colors = ["#9ec5e8", "#4d8fd1", "#1f4e79"]  # graded blue: Low / Mid / High
 
-    # --- LEFT: predicted CCU bars at the 3-month horizon, one per scenario ---
+    # --- LEFT: predicted CCU bars per horizon, three scenarios ---
+    x = np.arange(len(horizons))
+    width = 0.26
     ax = axes[0]
-    x = np.arange(len(scenario_labels))
-    vals = [predictions[(horizon, label)] for label in scenario_labels]
-    bars = ax.bar(x, vals, width=0.55, color=colors, edgecolor="k", linewidth=0.3)
-    for bar, v in zip(bars, vals):
-        ax.text(bar.get_x() + bar.get_width() / 2, v + max(vals) * 0.02,
-                f"{int(v):,}", ha="center", va="bottom", fontsize=10, fontweight="bold")
-    # Annotate each bar with its week-1 input
-    for bar, (label, week1) in zip(bars, scenarios):
-        ax.text(bar.get_x() + bar.get_width() / 2, max(vals) * 0.04,
-                f"week-1\n{int(week1):,} CCU", ha="center", va="bottom",
-                fontsize=8, color="white" if label != "Low (March 2026 avg)" else "black")
+    for i, label in enumerate(scenario_labels):
+        vals = [predictions[(h, label)] for h in horizons]
+        bars = ax.bar(x + (i - 1) * width, vals, width, color=colors[i],
+                      edgecolor="k", linewidth=0.3, label=label)
+        for bar, v in zip(bars, vals):
+            ax.text(bar.get_x() + bar.get_width() / 2, v + max(vals) * 0.02,
+                    f"{int(v):,}", ha="center", va="bottom", fontsize=8)
     ax.set_xticks(x)
-    ax.set_xticklabels(scenario_labels, fontsize=10)
-    ax.set_xlabel("Week-1 CCU input scenario")
-    ax.set_ylabel("Predicted CCU at 3 months")
-    ax.set_title("Predicted 3-month CCU under three week-1 input scenarios")
+    ax.set_xticklabels(["3-month", "6-month", "12-month"])
+    ax.set_xlabel("Prediction horizon")
+    ax.set_ylabel("Predicted average monthly CCU")
+    ax.set_title("Predicted CCU per horizon under three week-1 input scenarios")
+    ax.legend(title="Week-1 CCU input", fontsize=9, title_fontsize=9, loc="upper right")
     ax.grid(True, axis="y", alpha=0.3)
-    ax.set_ylim(0, max(vals) * 1.15)
 
-    # --- RIGHT: observed trajectory + month-3 predicted points + naive baseline ---
+    # --- RIGHT: observed trajectory + predicted bands + naive baseline ---
     ax = axes[1]
     obs_x = [t[0] for t in MARATHON_OBSERVED]
     obs_y = [t[1] for t in MARATHON_OBSERVED]
@@ -185,31 +177,29 @@ def render_figure(predictions: dict, marathon: pd.Series, empirical_week1: float
         ax.annotate(f"{int(my):,}", (mx, my), textcoords="offset points",
                     xytext=(7, 8), fontsize=8, fontweight="bold")
 
-    # Predicted points at month 3, connected from May 2026 observation
+    pred_months = [3, 6, 12]
     for i, label in enumerate(scenario_labels):
-        pred_y = predictions[(horizon, label)]
-        ax.plot([obs_x[-1], 3], [obs_y[-1], pred_y], "--", color=colors[i],
-                linewidth=1.8, marker="s", markersize=9,
-                label=f"Model: {label} -> {int(pred_y):,}")
-        ax.annotate(f"{int(pred_y):,}", (3, pred_y), textcoords="offset points",
-                    xytext=(7, 5), fontsize=8, color=colors[i], fontweight="bold")
+        pred_y = [predictions[(f"{m}m", label)] for m in pred_months]
+        connect_x = [obs_x[-1]] + pred_months
+        connect_y = [obs_y[-1]] + pred_y
+        ax.plot(connect_x, connect_y, "--", color=colors[i], linewidth=1.6,
+                marker="s", markersize=7, label=f"Model: {label}")
 
     # Naive -55%/mo decay anchored on April 2026 (the last full month of decay).
-    naive_x = [1, 2, 3]
+    naive_x = [1, 2, 3, 6, 12]
     base_april = 15833
     decay = 0.45  # i.e. -55% MoM
     naive_y = [base_april * (decay ** (m - 1)) for m in naive_x]
     ax.plot(naive_x, naive_y, ":", color="#888", linewidth=1.5,
-            marker="^", markersize=8, label=f"Naive -55%/mo decay -> {int(naive_y[-1]):,}")
-    ax.annotate(f"{int(naive_y[-1]):,}", (3, naive_y[-1]), textcoords="offset points",
-                xytext=(7, -12), fontsize=8, color="#666")
+            marker="^", markersize=6, label="Naive -55%/mo decay")
 
-    ax.set_xticks([0, 1, 2, 3])
-    ax.set_xticklabels(["0\nMar 26", "1\nApr", "2\nMay", "3\nJun"])
+    ax.set_xticks([0, 1, 2, 3, 6, 12])
+    ax.set_xticklabels(["0\nMar 26", "1\nApr", "2\nMay", "3\nJun",
+                         "6\nSep", "12\nMar 27"])
     ax.set_xlabel("Months since launch (2026-03-05)")
     ax.set_ylabel("Average monthly CCU")
-    ax.set_title("CCU trajectory: observed Mar-May 2026 vs predicted Jun 2026")
-    ax.legend(fontsize=9, loc="upper right")
+    ax.set_title("CCU trajectory: observed Mar-May 2026 vs predicted Jun-2026-Mar-2027")
+    ax.legend(fontsize=8, loc="upper right")
     ax.grid(True, alpha=0.3)
     ax.set_ylim(bottom=0)
 
@@ -242,29 +232,29 @@ def main() -> int:
 
     scenarios = [
         ("Low (March 2026 avg)", LOW_WEEK1),
-        ("Empirical (pipeline)", int(empirical_week1)),
+        (f"Empirical (Dominik, first-7-day avg)", int(empirical_week1)),
         ("High (launch-day peak)", HIGH_WEEK1),
     ]
 
-    print("\n=== Predictions at the 3-month horizon (raw CCU, back-transformed from log) ===")
+    print("\n=== Predictions per horizon x scenario (raw CCU, back-transformed from log) ===")
     predictions: dict[tuple[str, str], float] = {}
-    horizon = "3m"
-    print(f"  training GBR for {horizon} horizon ...")
-    gbr, feat_names = train_horizon_gbr(horizon)
-    for label, week1 in scenarios:
-        predictions[(horizon, label)] = predict_marathon(gbr, feat_names, marathon, float(week1))
-        print(f"  {horizon} | {label:<28} (week1={week1:>6,}) -> {predictions[(horizon, label)]:>9,.0f} CCU")
+    for h in HORIZONS:
+        print(f"  training GBR for {h} horizon ...")
+        gbr, feat_names = train_horizon_gbr(h)
+        for label, week1 in scenarios:
+            predictions[(h, label)] = predict_marathon(gbr, feat_names, marathon, float(week1))
+            print(f"  {h:>3} | {label:<42} (week1={week1:>6,}) -> {predictions[(h, label)]:>9,.0f} CCU")
 
     out = render_figure(predictions, marathon, empirical_week1)
     print(f"\n=== Figure rendered: {out} ===")
 
-    # Paste-friendly summary for §6.5 Marathon prose
-    low = predictions[(horizon, "Low (March 2026 avg)")]
-    emp = predictions[(horizon, "Empirical (pipeline)")]
-    high = predictions[(horizon, "High (launch-day peak)")]
+    # Also print absolute numbers in markdown-friendly form for pasting into Overleaf prose
     print("\n=== Numbers for report prose (paste-friendly) ===")
-    print(f"  3-month: Empirical = {emp:,.0f} CCU")
-    print(f"  3-month bracket: Low = {low:,.0f}  High = {high:,.0f}  (range {min(low,emp,high):,.0f}-{max(low,emp,high):,.0f})")
+    for h in ["3m", "6m", "12m"]:
+        low = predictions[(h, "Low (March 2026 avg)")]
+        emp = predictions[(h, "Empirical (Dominik, first-7-day avg)")]
+        high = predictions[(h, "High (launch-day peak)")]
+        print(f"  {h}: Low={low:,.0f}  Empirical={emp:,.0f}  High={high:,.0f}  (range {min(low,emp,high):,.0f}-{max(low,emp,high):,.0f})")
 
     return 0
 
