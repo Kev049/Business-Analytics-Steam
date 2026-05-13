@@ -135,6 +135,7 @@ def load_horizon(horizon: str) -> tuple[pd.DataFrame, pd.Series, list[str]]:
     df = pd.read_csv(DATA_DIR / rel_path)
     df.columns = df.columns.str.strip().str.replace("﻿", "")
     df = df.dropna(subset=[target_col])
+    df = df[df[WEEK1_COL] >= 100]  # matches Kevin's 100-player cutoff across all horizons
 
     drop_cols = [c for c in df.columns if "name" in c.lower() or "app_id" in c.lower()]
     feature_df = df.drop(columns=drop_cols + [target_col], errors="ignore")
@@ -252,7 +253,8 @@ def figure_0_top10_predictions() -> None:
     rel_path, target_col = HORIZONS["3m"]
     df = pd.read_csv(DATA_DIR / rel_path)
     df.columns = df.columns.str.strip().str.replace("﻿", "")
-    df = df.dropna(subset=[target_col]).reset_index(drop=True)
+    df = df.dropna(subset=[target_col])
+    df = df[df[WEEK1_COL] >= 100].reset_index(drop=True)  # match load_horizon's filter so names align with X/y
     names = df["name"].astype(str)
 
     # Re-derive X, y exactly as load_horizon does (RangeIndex, same row order)
@@ -466,6 +468,7 @@ def figure_5_week1_vs_target() -> None:
         df = pd.read_csv(DATA_DIR / rel_path)
         df.columns = df.columns.str.strip().str.replace("﻿", "")
         df = df.dropna(subset=[WEEK1_COL, target_col])
+        df = df[df[WEEK1_COL] >= 100]  # match Kevin's modeling subset
         x = df[WEEK1_COL].values
         y = df[target_col].values
 
@@ -511,6 +514,8 @@ def figure_6_exploration() -> None:
     rel_path, target_col = HORIZONS["3m"]
     df = pd.read_csv(DATA_DIR / rel_path)
     df.columns = df.columns.str.strip().str.replace("﻿", "")
+    df = df.dropna(subset=[target_col])
+    df = df[df[WEEK1_COL] >= 100]  # match Kevin's modeling subset
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 

@@ -3,10 +3,12 @@
 Output PNGs from `../audit_plots.py`. Regenerate by running the script
 from the parent folder.
 
-**Last regenerated:** 2026-05-07T22:22Z
-**Repo commit at regeneration:** 338d69af112a45435773c4972bd5e39aa2a61295
+**Last regenerated:** 2026-05-13T13:26Z
+**Repo commit at regeneration:** 0d562dbf (Kevin's `Add 100-player cutoff on all models`)
 **Source dataset:** `../models-6-5/{three,six,twelve}_months_model/{horizon}_final.csv`
-(Kevin's v2; 3,988 rows × 558 columns)
+(Kevin's v2; 3,988 rows → 2,900 rows after the >=100 first-week-players filter that
+Kevin applies in all three horizon scripts). The auditor pipeline in `../audit_plots.py`
+now applies the same filter so the figures reflect Kevin's modeling subset.
 
 ## Inventory
 
