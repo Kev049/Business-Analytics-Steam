@@ -55,13 +55,22 @@ RANDOM_STATE = 42
 TEST_SIZE = 0.15
 GBR_KWARGS = dict(n_estimators=150, max_depth=3, learning_rate=0.05, random_state=RANDOM_STATE)
 
-# Observed Steam trajectory (months-since-launch, raw average CCU, label).
-# Marathon released 2026-03-05 (Steam App 3065800, Bungie). Values sourced
-# from SteamCharts monthly averages on 2026-05-11.
+# Observed Steam trajectory. Sub-monthly granularity near launch (peak +
+# day-7 snapshot + launch-month avg) plus calendar-month averages afterward.
+# Marathon released 2026-03-05 (Steam App 3065800, Bungie); values sourced
+# from SteamCharts on 2026-05-11. The day-7 entry doubles as the model's
+# input value; it is plotted as a blue square on the prediction line and
+# annotated there (rather than on the observed line) to keep labels readable.
+LAUNCH_PEAK_CCU = 77358   # all-time peak on 2026-03-08 (3 days post-launch)
+MARCH_AVG_CCU = 35040     # March 2026 monthly average (Mar 5-31)
+APRIL_AVG_CCU = 15833     # April 2026 monthly average
+MAY_AVG_CCU = 3869        # last-30-days as of mid-May 2026
 MARATHON_OBSERVED = [
-    (0, 35040, "Mar 2026"),
-    (1, 15833, "Apr 2026"),
-    (2, 3869, "May 2026"),
+    (3 / 30.0, LAUNCH_PEAK_CCU, "launch peak (Mar 8)"),
+    # day-7 (Mar 12) at month 7/30 ~= 0.23 inserted by render_figure
+    (0.5, MARCH_AVG_CCU, "March avg"),
+    (1.0, APRIL_AVG_CCU, "April avg"),
+    (2.0, MAY_AVG_CCU, "May avg"),
 ]
 
 # Single week-1 input: the exact day-7 CCU value from the project's data
@@ -170,21 +179,39 @@ def render_figure(predictions: dict, marathon: pd.Series, empirical_week1: float
     # --- RIGHT: observed trajectory + day-7 input + 3 predicted points + naive baseline ---
     ax = axes[1]
 
-    # Observed (Mar / Apr / May) -- model never sees these
-    obs_x = [t[0] for t in MARATHON_OBSERVED]
-    obs_y = [t[1] for t in MARATHON_OBSERVED]
-    ax.plot(obs_x, obs_y, "o-", color="black", linewidth=2.2, markersize=9,
-            label="Observed Steam avg CCU", zorder=10)
-    for mx, my, _ in MARATHON_OBSERVED:
-        ax.annotate(f"{int(my):,}", (mx, my), textcoords="offset points",
-                    xytext=(7, 8), fontsize=8, fontweight="bold")
-
-    # Model prediction line: day-7 input -> month 3 -> month 6 -> month 12.
-    # The day-7 input is what the model actually consumes; the predictions
-    # are emitted from that single input. Anchoring the line on the day-7
-    # square (NOT on the May observed point) makes that flow explicit.
     day7_x = 7 / 30.0  # months: ~0.23
     day7_y = float(empirical_week1)
+
+    # Observed Steam CCU. Includes sub-monthly granularity near launch
+    # (peak on Mar 8, day-7 on Mar 12, March avg) plus April / May
+    # monthly averages. Day-7 is part of both observed reality and the
+    # model's input, so it appears on this line AND as the starting
+    # square of the prediction line below.
+    observed_points = [
+        (MARATHON_OBSERVED[0][0], MARATHON_OBSERVED[0][1]),  # launch peak
+        (day7_x, day7_y),                                     # day-7
+        (MARATHON_OBSERVED[1][0], MARATHON_OBSERVED[1][1]),  # March avg
+        (MARATHON_OBSERVED[2][0], MARATHON_OBSERVED[2][1]),  # April avg
+        (MARATHON_OBSERVED[3][0], MARATHON_OBSERVED[3][1]),  # May avg
+    ]
+    obs_x = [p[0] for p in observed_points]
+    obs_y = [p[1] for p in observed_points]
+    ax.plot(obs_x, obs_y, "o-", color="black", linewidth=2.2, markersize=8,
+            label="Observed Steam CCU (launch peak, day-7, monthly avg)", zorder=10)
+
+    # Annotate observed points (skip day-7 -- the prediction line annotates it).
+    observed_annotations = [
+        (MARATHON_OBSERVED[0][0], MARATHON_OBSERVED[0][1], MARATHON_OBSERVED[0][2]),
+        (MARATHON_OBSERVED[1][0], MARATHON_OBSERVED[1][1], MARATHON_OBSERVED[1][2]),
+        (MARATHON_OBSERVED[2][0], MARATHON_OBSERVED[2][1], MARATHON_OBSERVED[2][2]),
+        (MARATHON_OBSERVED[3][0], MARATHON_OBSERVED[3][1], MARATHON_OBSERVED[3][2]),
+    ]
+    for mx, my, atext in observed_annotations:
+        ax.annotate(f"{int(my):,}\n{atext}", (mx, my),
+                    textcoords="offset points", xytext=(7, 8),
+                    fontsize=8, fontweight="bold")
+
+    # Model prediction line: day-7 input -> month 3 -> month 6 -> month 12.
     pred_months = [3, 6, 12]
     pred_y = [predictions[(f"{m}m", label)] for m in pred_months]
     line_x = [day7_x] + pred_months
@@ -192,16 +219,16 @@ def render_figure(predictions: dict, marathon: pd.Series, empirical_week1: float
     ax.plot(line_x, line_y, "--", color="#1f4e79", linewidth=1.8,
             marker="s", markersize=10, zorder=11,
             label="Model: day-7 input -> 3/6/12-month predictions")
-    ax.annotate(f"day-7 input\n{int(day7_y):,} CCU\n(2026-03-12)",
+    ax.annotate(f"day-7 input\n{int(day7_y):,}\n(Mar 12)",
                 (day7_x, day7_y), textcoords="offset points",
-                xytext=(10, -6), fontsize=8, color="#1f4e79", fontweight="bold")
+                xytext=(8, -28), fontsize=8, color="#1f4e79", fontweight="bold")
     for m, y_val in zip(pred_months, pred_y):
         ax.annotate(f"{int(y_val):,}", (m, y_val), textcoords="offset points",
                     xytext=(7, 5), fontsize=9, color="#1f4e79", fontweight="bold")
 
     # Naive -55%/mo decay anchored on April 2026 (the last full month of decay).
     naive_x = [1, 2, 3, 6, 12]
-    base_april = 15833
+    base_april = APRIL_AVG_CCU
     decay = 0.45  # i.e. -55% MoM
     naive_y = [base_april * (decay ** (m - 1)) for m in naive_x]
     ax.plot(naive_x, naive_y, ":", color="#888", linewidth=1.5,
@@ -212,7 +239,7 @@ def render_figure(predictions: dict, marathon: pd.Series, empirical_week1: float
                          "6\nSep", "12\nMar 27"])
     ax.set_xlabel("Months since launch (2026-03-05)")
     ax.set_ylabel("Average monthly CCU")
-    ax.set_title("CCU trajectory: day-7 input + model predictions vs observed Mar-May 2026")
+    ax.set_title("CCU trajectory: observed (launch peak -> day-7 -> monthly avg) + model predictions")
     ax.legend(fontsize=9, loc="upper right")
     ax.grid(True, alpha=0.3)
     ax.set_ylim(bottom=0)
