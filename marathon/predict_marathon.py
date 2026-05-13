@@ -167,8 +167,10 @@ def render_figure(predictions: dict, marathon: pd.Series, empirical_week1: float
     ax.grid(True, axis="y", alpha=0.3)
     ax.set_ylim(0, max(vals) * 1.18)
 
-    # --- RIGHT: observed trajectory + 3 predicted points + naive baseline ---
+    # --- RIGHT: observed trajectory + day-7 input + 3 predicted points + naive baseline ---
     ax = axes[1]
+
+    # Observed (Mar / Apr / May) -- model never sees these
     obs_x = [t[0] for t in MARATHON_OBSERVED]
     obs_y = [t[1] for t in MARATHON_OBSERVED]
     ax.plot(obs_x, obs_y, "o-", color="black", linewidth=2.2, markersize=9,
@@ -177,13 +179,22 @@ def render_figure(predictions: dict, marathon: pd.Series, empirical_week1: float
         ax.annotate(f"{int(my):,}", (mx, my), textcoords="offset points",
                     xytext=(7, 8), fontsize=8, fontweight="bold")
 
+    # Model prediction line: day-7 input -> month 3 -> month 6 -> month 12.
+    # The day-7 input is what the model actually consumes; the predictions
+    # are emitted from that single input. Anchoring the line on the day-7
+    # square (NOT on the May observed point) makes that flow explicit.
+    day7_x = 7 / 30.0  # months: ~0.23
+    day7_y = float(empirical_week1)
     pred_months = [3, 6, 12]
     pred_y = [predictions[(f"{m}m", label)] for m in pred_months]
-    connect_x = [obs_x[-1]] + pred_months
-    connect_y = [obs_y[-1]] + pred_y
-    ax.plot(connect_x, connect_y, "--", color="#1f4e79", linewidth=1.8,
-            marker="s", markersize=9,
-            label=f"Model prediction (day-7 = {int(empirical_week1):,})")
+    line_x = [day7_x] + pred_months
+    line_y = [day7_y] + pred_y
+    ax.plot(line_x, line_y, "--", color="#1f4e79", linewidth=1.8,
+            marker="s", markersize=10, zorder=11,
+            label="Model: day-7 input -> 3/6/12-month predictions")
+    ax.annotate(f"day-7 input\n{int(day7_y):,} CCU\n(2026-03-12)",
+                (day7_x, day7_y), textcoords="offset points",
+                xytext=(10, -6), fontsize=8, color="#1f4e79", fontweight="bold")
     for m, y_val in zip(pred_months, pred_y):
         ax.annotate(f"{int(y_val):,}", (m, y_val), textcoords="offset points",
                     xytext=(7, 5), fontsize=9, color="#1f4e79", fontweight="bold")
@@ -201,7 +212,7 @@ def render_figure(predictions: dict, marathon: pd.Series, empirical_week1: float
                          "6\nSep", "12\nMar 27"])
     ax.set_xlabel("Months since launch (2026-03-05)")
     ax.set_ylabel("Average monthly CCU")
-    ax.set_title("CCU trajectory: observed Mar-May 2026 vs predicted Jun-2026-Mar-2027")
+    ax.set_title("CCU trajectory: day-7 input + model predictions vs observed Mar-May 2026")
     ax.legend(fontsize=9, loc="upper right")
     ax.grid(True, alpha=0.3)
     ax.set_ylim(bottom=0)
