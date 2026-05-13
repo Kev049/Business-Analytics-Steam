@@ -2,9 +2,12 @@
 predict_marathon.py — Marathon (2026) case study.
 
 Trains the production-equivalent GBR per horizon on Kevin's data, then predicts
-Marathon's average monthly CCU at 3, 6 and 12 months post-launch using the
-feature row produced by Dominik's data pipeline (`marathon_features.csv`,
-semicolon-delimited; sourced 2026-05-12).
+Marathon's CCU at 3, 6 and 12 months post-launch using the single day-7 CCU
+input from the project's data pipeline (`marathon_features.csv`,
+semicolon-delimited; sourced 2026-05-12). The day-7 value (60,335 CCU) is
+the exact concurrent-user count from the `players_7days_after_release`
+column — dated 2026-03-12, the second week of March 2026, seven days after
+the 2026-03-05 launch.
 
 Preprocessing matches `../visualisation/audit_plots.py` exactly:
   - drop rows with missing target
@@ -18,8 +21,8 @@ Usage:
     python predict_marathon.py
 
 Output:
-    figures/07_marathon_case_study.png    (1x2 panel)
-    stdout: scenario × horizon prediction table
+    figures/07_marathon_case_study.png    (1x2 panel: bars + trajectory)
+    stdout: per-horizon prediction table
 """
 
 from __future__ import annotations
@@ -61,13 +64,10 @@ MARATHON_OBSERVED = [
     (2, 3869, "May 2026"),
 ]
 
-# Three week-1 input scenarios. Empirical = Dominik's pipeline output, the
-# headline value for the report. Low and High retain the sensitivity context:
-# Low = March 2026 monthly average (biased downward by post-peak decay);
-# High = launch-day peak from Steam launch records (2026-03-08).
-EMPIRICAL_WEEK1 = 60335  # overridden by Dominik's CSV at runtime; kept for fallback
-LOW_WEEK1 = 35040
-HIGH_WEEK1 = 77358
+# Single week-1 input: the exact day-7 CCU value from the project's data
+# pipeline. The CSV (`marathon_features.csv`) provides this at runtime; the
+# constant below is kept only as a fallback if the CSV is missing the column.
+EMPIRICAL_WEEK1 = 60335  # day-7 CCU snapshot on 2026-03-12 (week 2 of March)
 
 
 # === DATA LOADING ===
@@ -136,38 +136,38 @@ def predict_marathon(gbr: GradientBoostingRegressor, feat_names: list[str],
 # === FIGURE ===
 
 def render_figure(predictions: dict, marathon: pd.Series, empirical_week1: float) -> Path:
-    """1x2 figure mirroring the layout established in audit_plots.py figure_7."""
+    """1x2 figure: single day-7 input -> three horizon predictions.
+
+    Left panel:  predicted CCU bars at 3, 6, 12 months for the single day-7
+                 input (60,335 CCU from the data pipeline, dated 2026-03-12).
+    Right panel: observed Steam trajectory (Mar-May 2026) plus the three
+                 predicted points (Jun 2026 / Sep 2026 / Mar 2027) plus a
+                 naive -55%/mo decay baseline anchored on April.
+    """
     horizons = ["3m", "6m", "12m"]
-    scenarios = [
-        ("Low (March 2026 avg)", LOW_WEEK1),
-        (f"Empirical (Dominik, first-7-day avg)", int(empirical_week1)),
-        ("High (launch-day peak)", HIGH_WEEK1),
-    ]
-    scenario_labels = [s[0] for s in scenarios]
+    label = "Empirical (pipeline)"
 
     fig, axes = plt.subplots(1, 2, figsize=(16, 6))
-    colors = ["#9ec5e8", "#4d8fd1", "#1f4e79"]  # graded blue: Low / Mid / High
+    bar_colors = ["#9ec5e8", "#4d8fd1", "#1f4e79"]  # graded blue across horizons
 
-    # --- LEFT: predicted CCU bars per horizon, three scenarios ---
-    x = np.arange(len(horizons))
-    width = 0.26
+    # --- LEFT: predicted CCU bars at the 3 horizons (single day-7 input) ---
     ax = axes[0]
-    for i, label in enumerate(scenario_labels):
-        vals = [predictions[(h, label)] for h in horizons]
-        bars = ax.bar(x + (i - 1) * width, vals, width, color=colors[i],
-                      edgecolor="k", linewidth=0.3, label=label)
-        for bar, v in zip(bars, vals):
-            ax.text(bar.get_x() + bar.get_width() / 2, v + max(vals) * 0.02,
-                    f"{int(v):,}", ha="center", va="bottom", fontsize=8)
+    x = np.arange(len(horizons))
+    vals = [predictions[(h, label)] for h in horizons]
+    bars = ax.bar(x, vals, width=0.55, color=bar_colors,
+                  edgecolor="k", linewidth=0.3)
+    for bar, v in zip(bars, vals):
+        ax.text(bar.get_x() + bar.get_width() / 2, v + max(vals) * 0.02,
+                f"{int(v):,}", ha="center", va="bottom", fontsize=11, fontweight="bold")
     ax.set_xticks(x)
-    ax.set_xticklabels(["3-month", "6-month", "12-month"])
+    ax.set_xticklabels(["3-month", "6-month", "12-month"], fontsize=11)
     ax.set_xlabel("Prediction horizon")
-    ax.set_ylabel("Predicted average monthly CCU")
-    ax.set_title("Predicted CCU per horizon under three week-1 input scenarios")
-    ax.legend(title="Week-1 CCU input", fontsize=9, title_fontsize=9, loc="upper right")
+    ax.set_ylabel("Predicted CCU")
+    ax.set_title(f"Predicted CCU per horizon\n(day-7 input: {int(empirical_week1):,} CCU, 2026-03-12)")
     ax.grid(True, axis="y", alpha=0.3)
+    ax.set_ylim(0, max(vals) * 1.18)
 
-    # --- RIGHT: observed trajectory + predicted bands + naive baseline ---
+    # --- RIGHT: observed trajectory + 3 predicted points + naive baseline ---
     ax = axes[1]
     obs_x = [t[0] for t in MARATHON_OBSERVED]
     obs_y = [t[1] for t in MARATHON_OBSERVED]
@@ -178,12 +178,15 @@ def render_figure(predictions: dict, marathon: pd.Series, empirical_week1: float
                     xytext=(7, 8), fontsize=8, fontweight="bold")
 
     pred_months = [3, 6, 12]
-    for i, label in enumerate(scenario_labels):
-        pred_y = [predictions[(f"{m}m", label)] for m in pred_months]
-        connect_x = [obs_x[-1]] + pred_months
-        connect_y = [obs_y[-1]] + pred_y
-        ax.plot(connect_x, connect_y, "--", color=colors[i], linewidth=1.6,
-                marker="s", markersize=7, label=f"Model: {label}")
+    pred_y = [predictions[(f"{m}m", label)] for m in pred_months]
+    connect_x = [obs_x[-1]] + pred_months
+    connect_y = [obs_y[-1]] + pred_y
+    ax.plot(connect_x, connect_y, "--", color="#1f4e79", linewidth=1.8,
+            marker="s", markersize=9,
+            label=f"Model prediction (day-7 = {int(empirical_week1):,})")
+    for m, y_val in zip(pred_months, pred_y):
+        ax.annotate(f"{int(y_val):,}", (m, y_val), textcoords="offset points",
+                    xytext=(7, 5), fontsize=9, color="#1f4e79", fontweight="bold")
 
     # Naive -55%/mo decay anchored on April 2026 (the last full month of decay).
     naive_x = [1, 2, 3, 6, 12]
@@ -199,7 +202,7 @@ def render_figure(predictions: dict, marathon: pd.Series, empirical_week1: float
     ax.set_xlabel("Months since launch (2026-03-05)")
     ax.set_ylabel("Average monthly CCU")
     ax.set_title("CCU trajectory: observed Mar-May 2026 vs predicted Jun-2026-Mar-2027")
-    ax.legend(fontsize=8, loc="upper right")
+    ax.legend(fontsize=9, loc="upper right")
     ax.grid(True, alpha=0.3)
     ax.set_ylim(bottom=0)
 
@@ -220,7 +223,7 @@ def main() -> int:
     marathon = load_marathon_features()
     empirical_week1 = float(marathon[WEEK1_COL])
 
-    print("=== Marathon feature snapshot (from Dominik's pipeline) ===")
+    print("=== Marathon feature snapshot (from data pipeline) ===")
     for key in [
         "app_id", "name", "type", "players_7days_after_release",
         "early_reviews_total", "early_reviews_positive", "early_reviews_negative",
@@ -230,31 +233,27 @@ def main() -> int:
         val = marathon.get(key, "(absent)")
         print(f"  {key}: {val}")
 
-    scenarios = [
-        ("Low (March 2026 avg)", LOW_WEEK1),
-        (f"Empirical (Dominik, first-7-day avg)", int(empirical_week1)),
-        ("High (launch-day peak)", HIGH_WEEK1),
-    ]
-
-    print("\n=== Predictions per horizon x scenario (raw CCU, back-transformed from log) ===")
+    label = "Empirical (pipeline)"
+    print(f"\n=== Predicting at 3 horizons from single day-7 input ({int(empirical_week1):,} CCU, 2026-03-12) ===")
     predictions: dict[tuple[str, str], float] = {}
     for h in HORIZONS:
         print(f"  training GBR for {h} horizon ...")
         gbr, feat_names = train_horizon_gbr(h)
-        for label, week1 in scenarios:
-            predictions[(h, label)] = predict_marathon(gbr, feat_names, marathon, float(week1))
-            print(f"  {h:>3} | {label:<42} (week1={week1:>6,}) -> {predictions[(h, label)]:>9,.0f} CCU")
+        predictions[(h, label)] = predict_marathon(gbr, feat_names, marathon, float(empirical_week1))
+        print(f"  {h:>3} -> {predictions[(h, label)]:>9,.0f} CCU")
 
     out = render_figure(predictions, marathon, empirical_week1)
     print(f"\n=== Figure rendered: {out} ===")
 
-    # Also print absolute numbers in markdown-friendly form for pasting into Overleaf prose
+    # Paste-friendly summary for §6.5 Marathon prose
+    p3 = predictions[("3m", label)]
+    p6 = predictions[("6m", label)]
+    p12 = predictions[("12m", label)]
     print("\n=== Numbers for report prose (paste-friendly) ===")
-    for h in ["3m", "6m", "12m"]:
-        low = predictions[(h, "Low (March 2026 avg)")]
-        emp = predictions[(h, "Empirical (Dominik, first-7-day avg)")]
-        high = predictions[(h, "High (launch-day peak)")]
-        print(f"  {h}: Low={low:,.0f}  Empirical={emp:,.0f}  High={high:,.0f}  (range {min(low,emp,high):,.0f}-{max(low,emp,high):,.0f})")
+    print(f"  day-7 input: {int(empirical_week1):,} CCU (2026-03-12, week 2 of March 2026)")
+    print(f"  3-month  prediction: {p3:,.0f} CCU")
+    print(f"  6-month  prediction: {p6:,.0f} CCU")
+    print(f"  12-month prediction: {p12:,.0f} CCU")
 
     return 0
 

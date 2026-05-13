@@ -14,11 +14,11 @@ refreshes the Marathon feature CSV or when Kevin reruns the training data.
 - `predict_marathon.py` — single-file script that loads Kevin's three horizon
   CSVs, trains one GBR per horizon (matching audit-plots preprocessing: 100-player
   cutoff, log1p on player/review columns, mean-impute, 85/15 random split with
-  seed 42), then predicts Marathon's average monthly CCU at 3/6/12-month horizons
-  under three week-1 scenarios (Low / Empirical / High). Renders the report's
-  Figure 7 (1×2 panel) into `figures/`.
-- `marathon_features.csv` — Marathon's first-7-day feature row from Dominik's
-  pipeline (2026-05-12 snapshot, semicolon-delimited, 60 columns, one row).
+  seed 42), then predicts Marathon's CCU at the 3-, 6- and 12-month horizons
+  using a single day-7 input from the project's data pipeline. Renders the
+  report's Figure 7 (1×2 panel) into `figures/`.
+- `marathon_features.csv` — Marathon's day-7 feature row from the project's
+  data pipeline (2026-05-12 snapshot, semicolon-delimited, 60 columns, one row).
 - `requirements.txt` — pinned dependencies (same set as `../visualisation/`).
 - `figures/07_marathon_case_study.png` — rendered figure (200 DPI), shipped
   to the Overleaf project as `Figures/07_marathon_case_study.png`.
@@ -30,19 +30,22 @@ pip install -r requirements.txt
 python predict_marathon.py
 ```
 
-The script prints the Marathon feature snapshot, the 3-horizon × 3-scenario
-prediction grid, and a paste-friendly summary line per horizon that maps onto
-the report's prose in `Text/Machine Learning Prediction.tex`.
+The script prints the Marathon feature snapshot, three predicted-CCU values
+(one per horizon), and a paste-friendly summary that maps onto the §6.5
+prose in `Text/Machine Learning Prediction.tex`.
 
-## Scenarios
+## Input
 
-| Scenario | Week-1 input | Source |
-|---|---|---|
-| Low (March 2026 avg) | 35,040 CCU | SteamCharts monthly average; biased downward by 27 days of post-peak decay |
-| Empirical (Dominik) | 60,335 CCU | Dominik's pipeline output, first-7-day average |
-| High (launch-day peak) | 77,358 CCU | SteamCharts launch-day peak (2026-03-08) |
+There is one week-1 input scenario: the value of the
+`players_7days_after_release` column in `marathon_features.csv`. This is the
+exact concurrent-user count on the seventh day after release — for Marathon
+that date is **2026-03-12** (the second week of March 2026), seven days
+after the 2026-03-05 launch. The pipeline-extracted value is **60,335 CCU**.
 
-The empirical scenario is the headline for the report. Low/High bracket sensitivity.
+The earlier draft used a Low / Empirical / High sensitivity bracket around
+this number (35,040 / 60,335 / 77,358). That bracket has been removed: the
+case study reports the single day-7 input that the model actually consumes,
+not a synthetic range.
 
 ## Why Dominik's feature row, not the hardcoded dict
 
