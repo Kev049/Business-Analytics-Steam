@@ -20,7 +20,8 @@ now applies the same filter so the figures reflect Kevin's modeling subset.
 | `04_residuals.png` | 1×3 grid. Residuals (observed − predicted, log-CCU) vs predicted, per horizon. |
 | `05_week1_vs_target.png` | 3×2 grid. `players_7days_after_release` vs target per horizon × linear/log scale, with regression trendline. |
 | `06_exploration.png` | Two-panel. Left: `early_positive_ratio` vs 3-month CCU scatter (log y). Right: 6×6 correlation heatmap. |
-| `07_marathon_case_study.png` | Marathon (2026) case study, 1×2 panel. Left: predicted average monthly CCU at 3/6/12-month horizons for three week-1 scenarios — Low (March 2026 monthly average, 35k), Empirical (Marathon's actual first-7-day Steam average of 65,778 CCU from SteamCharts daily snapshots), and High (launch-day peak of 77k). Right: observed Steam trajectory (Mar–May 2026) overlaid with the three predicted-trajectory bands and a naive -55%/mo decay baseline. Inputs sourced from Wikipedia / Steam store / SteamCharts on 2026-05-11. |
+
+(The Marathon (2026) case-study figure was previously `07_marathon_case_study.png`; it has moved to `../../marathon/figures/07_marathon_case_study.png` and is now produced by `../../marathon/predict_marathon.py`.)
 
 All figures use `random_state=42` and a single 85/15 random split (matches
 Kevin's setup). All 200 DPI.
