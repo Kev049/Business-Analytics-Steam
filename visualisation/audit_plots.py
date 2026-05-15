@@ -47,7 +47,9 @@ TEST_SIZE = 0.15
 
 GBR_KWARGS = dict(n_estimators=150, max_depth=3, learning_rate=0.05, random_state=RANDOM_STATE)
 RF_KWARGS = dict(n_estimators=200, max_depth=None, n_jobs=-1, random_state=RANDOM_STATE)
-LASSO_KWARGS = dict(alpha=0.1, max_iter=5000)
+# Per-horizon Lasso alpha matching Kevin's model_{N}_months_lr.py scripts in models-6-5/.
+LASSO_ALPHA_BY_HORIZON = {"3m": 0.045, "6m": 0.087, "12m": 0.09}
+LASSO_BASE_KWARGS = dict(max_iter=5000)
 
 # === DATA LOADING (Task 2) ===
 
@@ -93,8 +95,12 @@ def train_and_score(
     X: pd.DataFrame,
     y: pd.Series,
     model_name: str,
+    horizon: str | None = None,
 ) -> dict:
     """Train one model on a random 85/15 split (seed 42) and return metrics + predictions.
+
+    `horizon` is required for LR because Kevin's models use a horizon-specific
+    Lasso alpha (3m=0.045, 6m=0.087, 12m=0.09).
 
     Returns a dict with keys: model_name, r2, mae, mape, y_test, y_pred, model.
     """
@@ -107,10 +113,13 @@ def train_and_score(
     elif model_name == "RF":
         model = RandomForestRegressor(**RF_KWARGS)
     elif model_name == "LR":
+        if horizon is None or horizon not in LASSO_ALPHA_BY_HORIZON:
+            raise ValueError(f"LR requires a known horizon for alpha lookup, got {horizon!r}")
         scaler = StandardScaler()
         X_tr_s = scaler.fit_transform(X_tr)
         X_te_s = scaler.transform(X_te)
-        model = Lasso(**LASSO_KWARGS)
+        alpha = LASSO_ALPHA_BY_HORIZON[horizon]
+        model = Lasso(alpha=alpha, **LASSO_BASE_KWARGS)
         model.fit(X_tr_s, y_tr)
         y_pred = model.predict(X_te_s)
         return _scoring_dict(model_name, y_te, y_pred, model, X.columns)
@@ -157,7 +166,7 @@ def build_results() -> dict:
             for model_name in ("LR", "RF", "GBR"):
                 key = (horizon, has_feat, model_name)
                 print(f"  training {model_name:<3} | horizon={horizon} | with_week1={has_feat}")
-                out[key] = train_and_score(X, y, model_name)
+                out[key] = train_and_score(X, y, model_name, horizon=horizon)
     return out
 
 
