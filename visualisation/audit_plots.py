@@ -47,7 +47,7 @@ TEST_SIZE = 0.15
 
 GBR_KWARGS = dict(n_estimators=150, max_depth=3, learning_rate=0.05, random_state=RANDOM_STATE)
 RF_KWARGS = dict(n_estimators=200, max_depth=None, n_jobs=-1, random_state=RANDOM_STATE)
-LASSO_KWARGS = dict(alpha=0.01)
+LASSO_KWARGS = dict(alpha=0.1, max_iter=5000)
 
 # === DATA LOADING (Task 2) ===
 
@@ -328,36 +328,16 @@ def figure_2_model_comparison() -> None:
     width = 0.25
     x = np.arange(len(horizons))
 
-    R2_FLOOR = -2.0  # clip extreme LR negatives so RF/GBR stay readable
     for col, (metric_key, metric_label) in enumerate(metrics):
         ax = axes[col]
         for i, model_name in enumerate(models):
             vals = [results[(h, True, model_name)][metric_key] for h in horizons]
-            if metric_key == "r2":
-                plot_vals = [max(v, R2_FLOOR) for v in vals]
-                bars = ax.bar(x + i * width - width, plot_vals, width, label=model_name)
-                for bar, raw_val in zip(bars, vals):
-                    if raw_val < R2_FLOOR:
-                        ax.annotate(
-                            f"{raw_val:.1f}",
-                            xy=(bar.get_x() + bar.get_width() / 2, R2_FLOOR),
-                            xytext=(0, 4),
-                            textcoords="offset points",
-                            ha="center",
-                            va="bottom",
-                            fontsize=7,
-                            color="white",
-                            weight="bold",
-                        )
-            else:
-                ax.bar(x + i * width - width, vals, width, label=model_name)
+            ax.bar(x + i * width - width, vals, width, label=model_name)
         ax.set_xticks(x)
         ax.set_xticklabels(horizons)
         ax.set_title(metric_label)
         ax.set_xlabel("Horizon")
         ax.set_ylabel(metric_label)
-        if metric_key == "r2":
-            ax.set_ylim(R2_FLOOR, 1.05)
         ax.legend(fontsize=8)
         ax.grid(axis="y", alpha=0.3)
 
