@@ -312,35 +312,61 @@ def figure_1_feature_importance() -> None:
 # === FIGURE 2: Model Comparison (Task 4) ===
 
 def figure_2_model_comparison() -> None:
-    """2×2 grid. Rows = no/with players_7days. Cols = R² / MAE.
-    Bars = LR / RF / GBR, grouped by horizon (3m / 6m / 12m).
+    """1×2 grid: R² and MAE for LR / RF / GBR on the final feature set.
+
+    The final modelling direction uses players_7days_after_release (day-7 CCU
+    snapshot) with the 100-player threshold, so this figure shows the model
+    comparison on that feature set only. Bars are grouped by horizon
+    (3m / 6m / 12m).
     """
     results = get_results()
     horizons = ["3m", "6m", "12m"]
     models = ["LR", "RF", "GBR"]
-    feature_states = [False, True]
     metrics = [("r2", "R$^2$"), ("mae", "MAE (log-CCU)")]
 
-    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
     width = 0.25
     x = np.arange(len(horizons))
 
-    for row, has_feat in enumerate(feature_states):
-        for col, (metric_key, metric_label) in enumerate(metrics):
-            ax = axes[row, col]
-            for i, model_name in enumerate(models):
-                vals = [results[(h, has_feat, model_name)][metric_key] for h in horizons]
+    R2_FLOOR = -2.0  # clip extreme LR negatives so RF/GBR stay readable
+    for col, (metric_key, metric_label) in enumerate(metrics):
+        ax = axes[col]
+        for i, model_name in enumerate(models):
+            vals = [results[(h, True, model_name)][metric_key] for h in horizons]
+            if metric_key == "r2":
+                plot_vals = [max(v, R2_FLOOR) for v in vals]
+                bars = ax.bar(x + i * width - width, plot_vals, width, label=model_name)
+                for bar, raw_val in zip(bars, vals):
+                    if raw_val < R2_FLOOR:
+                        ax.annotate(
+                            f"{raw_val:.1f}",
+                            xy=(bar.get_x() + bar.get_width() / 2, R2_FLOOR),
+                            xytext=(0, 4),
+                            textcoords="offset points",
+                            ha="center",
+                            va="bottom",
+                            fontsize=7,
+                            color="white",
+                            weight="bold",
+                        )
+            else:
                 ax.bar(x + i * width - width, vals, width, label=model_name)
-            ax.set_xticks(x)
-            ax.set_xticklabels(horizons)
-            feature_label = "with players_7days" if has_feat else "without players_7days"
-            ax.set_title(f"{feature_label} — {metric_label}")
-            ax.set_xlabel("Horizon")
-            ax.set_ylabel(metric_label)
-            ax.legend(fontsize=8)
-            ax.grid(axis="y", alpha=0.3)
+        ax.set_xticks(x)
+        ax.set_xticklabels(horizons)
+        ax.set_title(metric_label)
+        ax.set_xlabel("Horizon")
+        ax.set_ylabel(metric_label)
+        if metric_key == "r2":
+            ax.set_ylim(R2_FLOOR, 1.05)
+        ax.legend(fontsize=8)
+        ax.grid(axis="y", alpha=0.3)
 
-    plt.tight_layout()
+    fig.suptitle(
+        "Model comparison on the final feature set "
+        "(includes day-7 CCU; 100-player threshold)",
+        fontsize=11,
+    )
+    plt.tight_layout(rect=(0, 0, 1, 0.95))
     out = FIGURES_DIR / "02_model_comparison.png"
     fig.savefig(out, dpi=200)
     plt.close(fig)
