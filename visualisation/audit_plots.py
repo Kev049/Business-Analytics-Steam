@@ -341,7 +341,17 @@ def figure_2_model_comparison() -> None:
         ax = axes[col]
         for i, model_name in enumerate(models):
             vals = [results[(h, True, model_name)][metric_key] for h in horizons]
-            ax.bar(x + i * width - width, vals, width, label=model_name)
+            bars = ax.bar(x + i * width - width, vals, width, label=model_name)
+            for bar, v in zip(bars, vals):
+                ax.annotate(
+                    f"{v:.3f}",
+                    xy=(bar.get_x() + bar.get_width() / 2, bar.get_height()),
+                    xytext=(0, 2),
+                    textcoords="offset points",
+                    ha="center",
+                    va="bottom",
+                    fontsize=7,
+                )
         ax.set_xticks(x)
         ax.set_xticklabels(horizons)
         ax.set_title(metric_label)
